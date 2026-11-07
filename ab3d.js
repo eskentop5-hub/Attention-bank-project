@@ -1,10 +1,13 @@
-// AB3D — компактный 3D-движок ATTENTION BANK на чистом WebGL (без библиотек).
-// Возможности: процедурные модели, трёхточечный свет (золотой key, синий fill, неоновый rim),
-// орбитальное управление с затуханием (мышь, тач, щипок, колесо, клавиатура), авто-вращение
-// с паузой при взаимодействии, парение, «взрыв» золотых кристаллов.
+// AB3D v2 — 3D-движок ATTENTION BANK на чистом WebGL (без библиотек).
+// Реализм: PBR-освещение (металличность/шероховатость, GGX, френель Шлика), отражения
+// процедурного студийного окружения, тени от ключевого света (shadow map + PCF) на объект
+// и на «подиум», тон-маппинг ACES, гамма-коррекция.
+// Управление: орбита с затуханием (мышь, тач, щипок, колесо, клавиатура), авто-вращение
+// с паузой при взаимодействии, парение, салют золотых кристаллов.
 // Один WebGL-контекст на страницу: каждая витрина рисуется в свою область (scissor).
 
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const SHADOW_SIZE = 1024;
 
 // ---------------- Матрицы 4×4 (column-major) ----------------
 const M = {
@@ -23,6 +26,9 @@ const M = {
     const f = 1 / Math.tan((fovDeg * Math.PI) / 360);
     const nf = 1 / (near - far);
     return new Float32Array([f / aspect, 0, 0, 0, 0, f, 0, 0, 0, 0, (far + near) * nf, -1, 0, 0, 2 * far * near * nf, 0]);
+  },
+  ortho(l, r, b, t, n, f) {
+    return new Float32Array([2 / (r - l), 0, 0, 0, 0, 2 / (t - b), 0, 0, 0, 0, -2 / (f - n), 0, -(r + l) / (r - l), -(t + b) / (t - b), -(f + n) / (f - n), 1]);
   },
   lookAt(e, t, u) {
     let zx = e[0] - t[0], zy = e[1] - t[1], zz = e[2] - t[2];
@@ -44,7 +50,6 @@ const M = {
   rotZ(a) { const c = Math.cos(a), s = Math.sin(a); return new Float32Array([c, s, 0, 0, -s, c, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]); },
   chain: (...ms) => ms.reduce((a, b) => M.mul(a, b)),
   normal3(m) {
-    // Для поворотов + равномерного масштаба нормаль = нормализованная верхняя 3×3
     const s = Math.hypot(m[0], m[1], m[2]) || 1;
     return new Float32Array([m[0] / s, m[1] / s, m[2] / s, m[4] / s, m[5] / s, m[6] / s, m[8] / s, m[9] / s, m[10] / s]);
   },
@@ -57,14 +62,34 @@ const tn = (m, n) => {
 };
 const hex = (h) => [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255];
 
+// Материалы: цвет (sRGB), металличность, шероховатость
+const MAT = {
+  gold: { c: hex('#F5B800'), metal: 1, rough: 0.2 },
+  goldPale: { c: hex('#FFD86A'), metal: 1, rough: 0.28 },
+  skyMetal: { c: hex('#1FB8D8'), metal: 0.85, rough: 0.22 },
+  gemSky: { c: hex('#3FD8F2'), metal: 0.35, rough: 0.05 },
+  gemMint: { c: hex('#3CCF9A'), metal: 0.35, rough: 0.05 },
+  gemGold: { c: hex('#FFC21A'), metal: 0.45, rough: 0.05 },
+  gemCoral: { c: hex('#FF7A5C'), metal: 0.35, rough: 0.05 },
+  diamond: { c: hex('#F4F1E6'), metal: 0.25, rough: 0.03 },
+  navyPlastic: { c: hex('#13243A'), metal: 0, rough: 0.35 },
+  tealPlastic: { c: hex('#0B6F87'), metal: 0, rough: 0.3 },
+  skyPlastic: { c: hex('#19B3D4'), metal: 0, rough: 0.28 },
+  cream: { c: hex('#FFF4D6'), metal: 0.1, rough: 0.3 },
+  silver: { c: hex('#D9E1E8'), metal: 1, rough: 0.18 },
+  ribbonSky: { c: hex('#1597B8'), metal: 0, rough: 0.75 },
+  ribbonCoral: { c: hex('#E5573C'), metal: 0, rough: 0.75 },
+};
+
 // ---------------- Геометрия ----------------
 class Geo {
   constructor() {
     this.pos = [];
     this.nor = [];
     this.col = [];
+    this.mat = [];
   }
-  tri(a, b, c, color, na, nb, nc) {
+  tri(a, b, c, mt, na, nb, nc) {
     if (!na) {
       const u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], v = [c[0] - a[0], c[1] - a[1], c[2] - a[2]];
       let n = [u[1] * v[2] - u[2] * v[1], u[2] * v[0] - u[0] * v[2], u[0] * v[1] - u[1] * v[0]];
@@ -74,28 +99,39 @@ class Geo {
     }
     this.pos.push(...a, ...b, ...c);
     this.nor.push(...na, ...nb, ...nc);
-    this.col.push(...color, ...color, ...color);
+    for (let i = 0; i < 3; i++) {
+      this.col.push(...mt.c);
+      this.mat.push(mt.metal, mt.rough);
+    }
   }
-  quad(a, b, c, d, color) {
-    this.tri(a, b, c, color);
-    this.tri(a, c, d, color);
+  quad(a, b, c, d, mt) {
+    this.tri(a, b, c, mt);
+    this.tri(a, c, d, mt);
   }
-  // Огранённый кристалл: площадка → корона → рундист → павильон
-  crystal(m, color, { sides = 8, r = 0.5, crown = 0.22, table = 0.62, pavilion = 0.62 } = {}) {
+  // Огранённый камень: площадка → корона → рундист → павильон (бриллиантовая огранка)
+  crystal(m, mt, { sides = 12, r = 0.5, crown = 0.2, table = 0.56, pavilion = 0.6 } = {}) {
     const ring = (rad, y, off = 0) => Array.from({ length: sides }, (_, i) => {
       const a = (i / sides) * Math.PI * 2 + off;
       return tp(m, [Math.cos(a) * rad, y, Math.sin(a) * rad]);
     });
-    const top = ring(r * table, crown, Math.PI / sides), girdle = ring(r, 0), center = tp(m, [0, crown, 0]), tip = tp(m, [0, -pavilion, 0]);
+    const top = ring(r * table, crown, Math.PI / sides);
+    const mid = ring(r * 0.86, crown * 0.45, 0);
+    const girdle = ring(r, 0, Math.PI / sides);
+    const pav = ring(r * 0.45, -pavilion * 0.55, 0);
+    const center = tp(m, [0, crown, 0]), tip = tp(m, [0, -pavilion, 0]);
     for (let i = 0; i < sides; i++) {
       const j = (i + 1) % sides;
-      this.tri(center, top[j], top[i], color);
-      this.tri(top[i], top[j], girdle[j], color);
-      this.tri(top[i], girdle[j], girdle[i], color);
-      this.tri(girdle[i], girdle[j], tip, color);
+      this.tri(center, top[j], top[i], mt);
+      this.tri(top[i], top[j], mid[j], mt);
+      this.tri(top[i], mid[j], mid[i], mt);
+      this.tri(mid[i], mid[j], girdle[j], mt);
+      this.tri(mid[i], girdle[j], girdle[i], mt);
+      this.tri(girdle[i], girdle[j], pav[j], mt);
+      this.tri(girdle[i], pav[j], pav[i], mt);
+      this.tri(pav[i], pav[j], tip, mt);
     }
   }
-  torus(m, color, { R = 0.6, r = 0.12, su = 64, sv = 20 } = {}) {
+  torus(m, mt, { R = 0.6, r = 0.12, su = 96, sv = 28 } = {}) {
     const P = (u, v) => [(R + r * Math.cos(v)) * Math.cos(u), (R + r * Math.cos(v)) * Math.sin(u), r * Math.sin(v)];
     const N = (u, v) => [Math.cos(v) * Math.cos(u), Math.cos(v) * Math.sin(u), Math.sin(v)];
     for (let i = 0; i < su; i++)
@@ -103,134 +139,271 @@ class Geo {
         const u0 = (i / su) * 2 * Math.PI, u1 = ((i + 1) / su) * 2 * Math.PI, v0 = (j / sv) * 2 * Math.PI, v1 = ((j + 1) / sv) * 2 * Math.PI;
         const a = tp(m, P(u0, v0)), b = tp(m, P(u1, v0)), c = tp(m, P(u1, v1)), d = tp(m, P(u0, v1));
         const na = tn(m, N(u0, v0)), nb = tn(m, N(u1, v0)), nc = tn(m, N(u1, v1)), nd = tn(m, N(u0, v1));
-        this.tri(a, b, c, color, na, nb, nc);
-        this.tri(a, c, d, color, na, nc, nd);
+        this.tri(a, b, c, mt, na, nb, nc);
+        this.tri(a, c, d, mt, na, nc, nd);
       }
   }
-  box(m, color, w, h, d) {
-    const x = w / 2, y = h / 2, z = d / 2;
-    const v = [[-x, -y, z], [x, -y, z], [x, y, z], [-x, y, z], [-x, -y, -z], [x, -y, -z], [x, y, -z], [-x, y, -z]].map((p) => tp(m, p));
-    const f = [[0, 1, 2, 3], [5, 4, 7, 6], [4, 0, 3, 7], [1, 5, 6, 2], [3, 2, 6, 7], [4, 5, 1, 0]];
-    for (const [a, b, c, dd] of f) this.quad(v[a], v[b], v[c], v[dd], color);
+  // Брусок со скруглёнными рёбрами (фаска) — выглядит как обработанный металл, а не «коробка»
+  bevelBox(m, mt, w, h, d, bev = 0.025) {
+    const x = w / 2, y = h / 2, z = d / 2, b = Math.min(bev, x * 0.4, y * 0.4, z * 0.4);
+    const X = x - b, Y = y - b, Z = z - b;
+    const faces = [
+      [[-X, -Y, z], [X, -Y, z], [X, Y, z], [-X, Y, z]], [[X, -Y, -z], [-X, -Y, -z], [-X, Y, -z], [X, Y, -z]],
+      [[-x, -Y, -Z], [-x, -Y, Z], [-x, Y, Z], [-x, Y, -Z]], [[x, -Y, Z], [x, -Y, -Z], [x, Y, -Z], [x, Y, Z]],
+      [[-X, y, Z], [X, y, Z], [X, y, -Z], [-X, y, -Z]], [[-X, -y, -Z], [X, -y, -Z], [X, -y, Z], [-X, -y, Z]],
+    ];
+    for (const f of faces) this.quad(...f.map((p) => tp(m, p)), mt);
+    // Фаски вдоль рёбер
+    const edges = [
+      [[-X, y, Z], [X, y, Z], [X, Y, z], [-X, Y, z]], [[X, y, -Z], [-X, y, -Z], [-X, Y, -z], [X, Y, -z]],
+      [[X, -y, Z], [-X, -y, Z], [-X, -Y, z], [X, -Y, z]], [[-X, -y, -Z], [X, -y, -Z], [X, -Y, -z], [-X, -Y, -z]],
+      [[x, Y, Z], [x, -Y, Z], [X, -Y, z], [X, Y, z]], [[-x, -Y, Z], [-x, Y, Z], [-X, Y, z], [-X, -Y, z]],
+      [[x, -Y, -Z], [x, Y, -Z], [X, Y, -z], [X, -Y, -z]], [[-x, Y, -Z], [-x, -Y, -Z], [-X, -Y, -z], [-X, Y, -z]],
+      [[X, y, Z], [X, y, -Z], [x, Y, -Z], [x, Y, Z]], [[-X, y, -Z], [-X, y, Z], [-x, Y, Z], [-x, Y, -Z]],
+      [[X, -y, -Z], [X, -y, Z], [x, -Y, Z], [x, -Y, -Z]], [[-X, -y, Z], [-X, -y, -Z], [-x, -Y, -Z], [-x, -Y, Z]],
+    ];
+    for (const e of edges) this.quad(...e.map((p) => tp(m, p)), mt);
   }
-  // Цилиндр вдоль оси Z (лицевая сторона к камере)
-  cylinder(m, color, { r = 0.5, h = 0.1, seg = 48, capColor = color } = {}) {
+  // Цилиндр вдоль оси Z (лицевая сторона к камере) с фаской по краю
+  cylinder(m, mt, { r = 0.5, h = 0.1, seg = 72, capMat = mt } = {}) {
+    const bev = h * 0.3;
     for (let i = 0; i < seg; i++) {
       const a0 = (i / seg) * 2 * Math.PI, a1 = ((i + 1) / seg) * 2 * Math.PI;
-      const p = (a, z) => tp(m, [Math.cos(a) * r, Math.sin(a) * r, z]);
-      const n = (a) => tn(m, [Math.cos(a), Math.sin(a), 0]);
-      const A = p(a0, h / 2), B = p(a1, h / 2), C = p(a1, -h / 2), D = p(a0, -h / 2);
-      this.tri(A, D, C, color, n(a0), n(a0), n(a1));
-      this.tri(A, C, B, color, n(a0), n(a1), n(a1));
-      this.tri(tp(m, [0, 0, h / 2]), A, B, capColor);
-      this.tri(tp(m, [0, 0, -h / 2]), C, D, capColor);
+      const p = (a, rr, z) => tp(m, [Math.cos(a) * rr, Math.sin(a) * rr, z]);
+      const n = (a, nz = 0) => tn(m, [Math.cos(a), Math.sin(a), nz]);
+      const z1 = h / 2 - bev, z2 = -h / 2 + bev, ri = r - bev;
+      this.tri(p(a0, r, z1), p(a0, r, z2), p(a1, r, z2), mt, n(a0), n(a0), n(a1));
+      this.tri(p(a0, r, z1), p(a1, r, z2), p(a1, r, z1), mt, n(a0), n(a1), n(a1));
+      this.tri(p(a0, ri, h / 2), p(a0, r, z1), p(a1, r, z1), mt, n(a0, 1), n(a0, 0.3), n(a1, 0.3));
+      this.tri(p(a0, ri, h / 2), p(a1, r, z1), p(a1, ri, h / 2), mt, n(a0, 1), n(a1, 0.3), n(a1, 1));
+      this.tri(p(a0, r, z2), p(a0, ri, -h / 2), p(a1, ri, -h / 2), mt, n(a0, -0.3), n(a0, -1), n(a1, -1));
+      this.tri(p(a0, r, z2), p(a1, ri, -h / 2), p(a1, r, z2), mt, n(a0, -0.3), n(a1, -1), n(a1, -0.3));
+      this.tri(tp(m, [0, 0, h / 2]), p(a0, ri, h / 2), p(a1, ri, h / 2), capMat);
+      this.tri(tp(m, [0, 0, -h / 2]), p(a1, ri, -h / 2), p(a0, ri, -h / 2), capMat);
     }
   }
-  // Пятиконечная звезда-призма (в плоскости XY, толщина по Z)
-  star(m, color, { r = 0.36, inner = 0.15, h = 0.08 } = {}) {
+  // Пятиконечная звезда с объёмными гранями (как чеканка)
+  star(m, mt, { r = 0.36, inner = 0.15, h = 0.08 } = {}) {
     const pts = Array.from({ length: 10 }, (_, i) => {
       const a = Math.PI / 2 + (i * Math.PI) / 5, rad = i % 2 ? inner : r;
       return [Math.cos(a) * rad, Math.sin(a) * rad];
     });
-    const f = tp(m, [0, 0, h / 2]), b = tp(m, [0, 0, -h / 2]);
+    const apex = tp(m, [0, 0, h]), base = tp(m, [0, 0, 0]);
     for (let i = 0; i < 10; i++) {
       const j = (i + 1) % 10;
-      const pf = tp(m, [pts[i][0], pts[i][1], h / 2]), qf = tp(m, [pts[j][0], pts[j][1], h / 2]);
-      const pb = tp(m, [pts[i][0], pts[i][1], -h / 2]), qb = tp(m, [pts[j][0], pts[j][1], -h / 2]);
-      this.tri(f, pf, qf, color);
-      this.tri(b, qb, pb, color);
-      this.quad(pf, pb, qb, qf, color);
+      const p = tp(m, [pts[i][0], pts[i][1], 0]), q = tp(m, [pts[j][0], pts[j][1], 0]);
+      this.tri(apex, p, q, mt);
+      this.tri(base, q, p, mt);
+    }
+  }
+  // Диск «подиума» для теней (в плоскости XZ)
+  disc(r = 2.4, seg = 64) {
+    const mt = { c: [0, 0, 0], metal: 0, rough: 1 };
+    for (let i = 0; i < seg; i++) {
+      const a0 = (i / seg) * 2 * Math.PI, a1 = ((i + 1) / seg) * 2 * Math.PI;
+      const up = [0, 1, 0];
+      this.tri([0, 0, 0], [Math.cos(a1) * r, 0, Math.sin(a1) * r], [Math.cos(a0) * r, 0, Math.sin(a0) * r], mt, up, up, up);
     }
   }
 }
 
 // ---------------- Модели ----------------
-const GOLD = hex('#F2B705'), GOLD_L = hex('#FFD34D'), SKY = hex('#19B3D4'), SKY_D = hex('#0B6F87'), MINT = hex('#3CCF9A'), CREAM = hex('#FFF4CC'), NAVY = hex('#13243A'), CORAL = hex('#EF6B4F');
-const PALETTES = [[SKY, GOLD, MINT], [GOLD, SKY, CORAL], [MINT, GOLD, SKY], [CORAL, SKY, GOLD]];
+const GEMS = [MAT.gemSky, MAT.gemMint, MAT.gemGold, MAT.gemCoral];
 
-// Каждая модель: { geo, spec (сила бликов), size (радиус для камеры) }
 export const MODELS = {
-  // Знак ATTENTION BANK: бирюзовое кольцо «внимания» сцеплено с золотым кольцом «ценности»
+  // Знак ATTENTION BANK: металлическое бирюзовое кольцо «внимания» сцеплено с золотым кольцом «ценности»
   logo() {
     const g = new Geo();
-    g.torus(M.chain(M.trans(-0.42, 0, 0), M.rotY(0.25)), SKY, { R: 0.72, r: 0.15 });
-    g.torus(M.chain(M.trans(0.42, 0, 0), M.rotX(Math.PI / 2), M.rotY(-0.25)), GOLD, { R: 0.72, r: 0.15 });
-    g.crystal(M.chain(M.trans(0, 0, 0), M.scale(0.42)), CREAM, { sides: 8 });
-    return { geo: g, spec: 1, size: 1.35 };
+    g.torus(M.chain(M.trans(-0.42, 0, 0), M.rotY(0.25)), MAT.skyMetal, { R: 0.72, r: 0.15 });
+    g.torus(M.chain(M.trans(0.42, 0, 0), M.rotX(Math.PI / 2), M.rotY(-0.25)), MAT.gold, { R: 0.72, r: 0.15 });
+    g.crystal(M.scale(0.42), MAT.diamond, { sides: 16 });
+    return { geo: g, size: 1.3 };
   },
-  // Ранний доступ: золотой ключ
+  // Ранний доступ: ключ из полированного золота с камнем в ушке
   game_access(v = 0) {
     const g = new Geo();
-    const c = v % 2 ? GOLD_L : GOLD;
-    g.torus(M.trans(-0.62, 0, 0), c, { R: 0.3, r: 0.1, su: 48, sv: 16 });
-    g.box(M.trans(0.12, 0, 0), c, 1.12, 0.14, 0.14);
-    g.box(M.trans(0.5, -0.17, 0), c, 0.12, 0.26, 0.12);
-    g.box(M.trans(0.66, -0.13, 0), c, 0.1, 0.18, 0.12);
-    g.crystal(M.chain(M.trans(-0.62, 0, 0), M.rotX(Math.PI / 2), M.scale(0.22)), SKY, { sides: 6 });
-    return { geo: g, spec: 1, size: 1.05 };
+    const mt = v % 2 ? MAT.goldPale : MAT.gold;
+    g.torus(M.trans(-0.62, 0, 0), mt, { R: 0.3, r: 0.09, su: 72, sv: 22 });
+    g.bevelBox(M.trans(0.12, 0, 0), mt, 1.12, 0.13, 0.13, 0.03);
+    g.bevelBox(M.trans(0.5, -0.16, 0), mt, 0.12, 0.24, 0.12, 0.025);
+    g.bevelBox(M.trans(0.66, -0.12, 0), mt, 0.1, 0.16, 0.12, 0.025);
+    g.bevelBox(M.trans(-0.27, 0, 0), mt, 0.07, 0.22, 0.2, 0.02);
+    g.crystal(M.chain(M.trans(-0.62, 0, 0), M.rotX(Math.PI / 2), M.scale(0.24)), MAT.gemSky, { sides: 12 });
+    return { geo: g, size: 1.05 };
   },
-  // Внутриигровые предметы: связка кристаллов
+  // Внутриигровые предметы: связка огранённых камней
   in_game(v = 0) {
     const g = new Geo();
-    const [a, b, c] = PALETTES[v % PALETTES.length];
-    g.crystal(M.chain(M.trans(0, 0.1, 0), M.scale(0.95)), a, { sides: 8 });
-    g.crystal(M.chain(M.trans(-0.62, -0.25, 0.15), M.rotZ(0.35), M.scale(0.5)), b, { sides: 6 });
-    g.crystal(M.chain(M.trans(0.6, -0.28, -0.1), M.rotZ(-0.3), M.scale(0.45)), c, { sides: 6 });
-    return { geo: g, spec: 0.8, size: 1.1 };
+    const a = GEMS[v % 4], b = GEMS[(v + 1) % 4], c = GEMS[(v + 2) % 4];
+    g.crystal(M.chain(M.trans(0, 0.12, 0), M.scale(0.95)), a, { sides: 16 });
+    g.crystal(M.chain(M.trans(-0.64, -0.24, 0.18), M.rotZ(0.35), M.scale(0.5)), b, { sides: 12 });
+    g.crystal(M.chain(M.trans(0.62, -0.28, -0.12), M.rotZ(-0.3), M.scale(0.45)), c, { sides: 12 });
+    return { geo: g, size: 1.12 };
   },
-  // Подписки и сервисы: цифровая карта-пропуск
+  // Подписки и сервисы: карта-пропуск с металлическим чипом
   subscription(v = 0) {
     const g = new Geo();
-    g.box(M.ident(), v % 2 ? SKY_D : NAVY, 1.6, 1.0, 0.07);
-    g.box(M.trans(0, 0.24, 0.04), SKY, 1.6, 0.16, 0.02);
-    g.box(M.trans(-0.5, -0.12, 0.045), GOLD, 0.3, 0.22, 0.03);
-    g.box(M.trans(0.22, -0.3, 0.045), CREAM, 0.8, 0.06, 0.02);
-    g.crystal(M.chain(M.trans(0.55, -0.05, 0.08), M.rotX(Math.PI / 2), M.scale(0.18)), GOLD, { sides: 6 });
-    return { geo: g, spec: 0.6, size: 1.0 };
+    g.bevelBox(M.ident(), v % 2 ? MAT.tealPlastic : MAT.navyPlastic, 1.6, 1.0, 0.06, 0.03);
+    g.bevelBox(M.trans(0, 0.25, 0.035), MAT.skyPlastic, 1.56, 0.15, 0.012, 0.004);
+    g.bevelBox(M.trans(-0.5, -0.1, 0.04), MAT.gold, 0.28, 0.21, 0.02, 0.01);
+    g.bevelBox(M.trans(-0.5, -0.1, 0.052), MAT.goldPale, 0.12, 0.21, 0.004, 0.002);
+    g.bevelBox(M.trans(0.22, -0.3, 0.036), MAT.silver, 0.8, 0.05, 0.01, 0.004);
+    g.crystal(M.chain(M.trans(0.55, -0.04, 0.07), M.rotX(Math.PI / 2), M.scale(0.18)), MAT.gemGold, { sides: 12 });
+    return { geo: g, size: 1.0 };
   },
-  // Признание: медаль со звездой и лентами
+  // Признание: медаль с чеканной звездой и лентами
   recognition(v = 0) {
     const g = new Geo();
-    g.box(M.chain(M.trans(-0.2, 0.62, -0.05), M.rotZ(0.35)), v % 2 ? CORAL : SKY, 0.26, 0.7, 0.03);
-    g.box(M.chain(M.trans(0.2, 0.62, -0.05), M.rotZ(-0.35)), v % 2 ? CORAL : SKY, 0.26, 0.7, 0.03);
-    g.cylinder(M.ident(), GOLD, { r: 0.5, h: 0.12 });
-    g.torus(M.ident(), GOLD_L, { R: 0.5, r: 0.05, su: 48, sv: 10 });
-    g.star(M.trans(0, 0, 0.08), CREAM, { r: 0.32, inner: 0.14, h: 0.06 });
-    return { geo: g, spec: 1, size: 1.3 };
+    const rib = v % 2 ? MAT.ribbonCoral : MAT.ribbonSky;
+    g.bevelBox(M.chain(M.trans(-0.2, 0.62, -0.05), M.rotZ(0.35)), rib, 0.26, 0.72, 0.025, 0.008);
+    g.bevelBox(M.chain(M.trans(0.2, 0.62, -0.05), M.rotZ(-0.35)), rib, 0.26, 0.72, 0.025, 0.008);
+    g.cylinder(M.ident(), MAT.gold, { r: 0.5, h: 0.12 });
+    g.torus(M.trans(0, 0, 0.0), MAT.goldPale, { R: 0.47, r: 0.045, su: 72, sv: 14 });
+    g.star(M.trans(0, 0, 0.06), MAT.cream, { r: 0.32, inner: 0.14, h: 0.07 });
+    return { geo: g, size: 1.3 };
   },
-  // Частица салюта
   shard() {
     const g = new Geo();
-    g.crystal(M.scale(0.09), GOLD, { sides: 4, crown: 0.3, table: 0.4, pavilion: 0.6 });
-    return { geo: g, spec: 1, size: 0.1 };
+    g.crystal(M.scale(0.09), MAT.gemGold, { sides: 6, crown: 0.3, table: 0.4, pavilion: 0.6 });
+    return { geo: g, size: 0.1 };
+  },
+  floor() {
+    const g = new Geo();
+    g.disc();
+    return { geo: g, size: 1 };
   },
 };
 
 // ---------------- Шейдеры ----------------
 const VS = `
-attribute vec3 aPos; attribute vec3 aNor; attribute vec3 aCol;
-uniform mat4 uModel, uView, uProj; uniform mat3 uNM;
-varying vec3 vN; varying vec3 vP; varying vec3 vC;
-void main(){ vec4 w = uModel * vec4(aPos,1.0); vP = w.xyz; vN = uNM * aNor; vC = aCol; gl_Position = uProj * uView * w; }`;
-const FS = `
-precision mediump float;
-varying vec3 vN; varying vec3 vP; varying vec3 vC;
-uniform vec3 uCam; uniform float uSpec; uniform float uAlpha; uniform float uGlow;
+attribute vec3 aPos; attribute vec3 aNor; attribute vec3 aCol; attribute vec2 aMat;
+uniform mat4 uModel, uView, uProj, uLightVP; uniform mat3 uNM;
+varying vec3 vN; varying vec3 vP; varying vec3 vC; varying vec2 vM; varying vec4 vLP;
 void main(){
-  vec3 N = normalize(vN); vec3 V = normalize(uCam - vP);
-  if (!gl_FrontFacing) N = -N;
-  vec3 Lk = normalize(vec3(0.55, 0.8, 0.75));  vec3 Ck = vec3(1.0, 0.84, 0.5) * 1.15;   // золотой key
-  vec3 Lf = normalize(vec3(-0.85, 0.05, 0.45)); vec3 Cf = vec3(0.3, 0.5, 1.0) * 0.55;    // синий fill
-  vec3 Lr = normalize(vec3(-0.25, 0.35, -1.0)); vec3 Cr = vec3(0.12, 0.92, 1.0);          // неоновый rim
-  float dk = max(dot(N, Lk), 0.0), df = max(dot(N, Lf), 0.0);
-  float sk = pow(max(dot(N, normalize(Lk + V)), 0.0), 56.0);
-  float sf = pow(max(dot(N, normalize(Lf + V)), 0.0), 24.0) * 0.35;
-  float fres = pow(1.0 - max(dot(N, V), 0.0), 2.6);
-  float rim = fres * (0.55 + 0.45 * max(dot(N, -Lr) * -1.0 + 0.6, 0.0));
-  vec3 c = vC * (0.13 + dk * Ck + df * Cf) + (sk * Ck + sf * Cf) * uSpec + rim * Cr * 0.7 + vC * uGlow;
-  c = c / (c + vec3(0.8)) * 1.55;
-  gl_FragColor = vec4(c, uAlpha);
+  vec4 w = uModel * vec4(aPos, 1.0);
+  vP = w.xyz; vN = uNM * aNor; vC = aCol; vM = aMat; vLP = uLightVP * w;
+  gl_Position = uProj * uView * w;
 }`;
+
+const FS = `
+precision highp float;
+varying vec3 vN; varying vec3 vP; varying vec3 vC; varying vec2 vM; varying vec4 vLP;
+uniform vec3 uCam; uniform vec3 uKeyDir; uniform sampler2D uShadow;
+uniform float uAlpha; uniform float uGlow; uniform float uFloor; uniform float uShadowOn;
+const float PI = 3.14159265;
+
+// Процедурная фотостудия: тёмный фон, верхний софтбокс, ключевой тёплый свет, бирюзовая контровая полоса
+vec3 env(vec3 d) {
+  float y = d.y;
+  vec3 c = mix(vec3(0.010, 0.016, 0.026), vec3(0.045, 0.065, 0.095), smoothstep(-0.3, 0.9, y));
+  c += vec3(1.9, 1.75, 1.5) * smoothstep(0.86, 0.97, y);
+  vec3 k = normalize(vec3(0.55, 0.45, 0.7));
+  c += vec3(3.2, 2.5, 1.6) * pow(max(dot(d, k), 0.0), 60.0);
+  vec3 r = normalize(vec3(-0.85, 0.25, -0.5));
+  c += vec3(0.35, 2.2, 2.8) * pow(max(dot(d, r), 0.0), 26.0);
+  vec3 f = normalize(vec3(-0.9, 0.05, 0.45));
+  c += vec3(0.25, 0.42, 1.05) * pow(max(dot(d, f), 0.0), 5.0) * 0.55;
+  c += vec3(0.05, 0.035, 0.02) * smoothstep(0.0, -0.6, y);
+  return c;
+}
+vec3 envBlur(vec3 d, float rough) {
+  // Грубая «размытая» версия окружения для шероховатых поверхностей
+  vec3 sharp = env(d);
+  vec3 soft = mix(vec3(0.02, 0.03, 0.045), vec3(0.32, 0.30, 0.28), smoothstep(-0.4, 1.0, d.y)) + vec3(0.05, 0.28, 0.36) * max(dot(d, normalize(vec3(-0.85, 0.25, -0.5))), 0.0) * 0.6;
+  return mix(sharp, soft, clamp(rough * 1.6, 0.0, 1.0));
+}
+float unpack(vec4 c) { return dot(c, vec4(1.0, 1.0 / 255.0, 1.0 / 65025.0, 1.0 / 16581375.0)); }
+float shadowAt(vec4 lp, float bias) {
+  vec3 p = lp.xyz / lp.w * 0.5 + 0.5;
+  if (p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0 || p.z > 1.0) return 1.0;
+  float s = 0.0;
+  for (int x = -2; x <= 2; x++)
+    for (int y = -2; y <= 2; y++) {
+      float d = unpack(texture2D(uShadow, p.xy + vec2(float(x), float(y)) * (1.6 / ${SHADOW_SIZE}.0)));
+      s += (p.z - bias > d) ? 0.0 : 1.0;
+    }
+  return s / 25.0;
+}
+vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
+
+void main() {
+  if (uFloor > 0.5) {
+    // Подиум: прозрачный, видна только мягкая тень и лёгкая тёплая подсветка в центре
+    float r = length(vP.xz);
+    float fade = smoothstep(2.3, 0.2, r);
+    float sh = uShadowOn > 0.5 ? shadowAt(vLP, 0.002) : 1.0;
+    float a = fade * (0.22 + 0.62 * (1.0 - sh));
+    vec3 col = mix(vec3(0.0), vec3(0.09, 0.075, 0.05), sh * fade * 0.5);
+    gl_FragColor = vec4(col, a * uAlpha);
+    return;
+  }
+  vec3 N = normalize(vN);
+  vec3 V = normalize(uCam - vP);
+  if (dot(N, V) < 0.0) N = -N;
+  float metal = vM.x, rough = max(vM.y, 0.035);
+  vec3 albedo = pow(vC, vec3(2.2));
+  vec3 F0 = mix(vec3(0.05), albedo, metal);
+  float NdV = max(dot(N, V), 0.001);
+  vec3 Fv = F0 + (1.0 - F0) * pow(1.0 - NdV, 5.0);
+
+  vec3 Lo = vec3(0.0);
+  float sh = uShadowOn > 0.5 ? shadowAt(vLP, 0.0035) : 1.0;
+  // Три источника: тёплый ключевой (с тенью), синий заполняющий, неоновый контровой
+  vec3 Ls[3]; vec3 Cs[3];
+  Ls[0] = normalize(uKeyDir);                Cs[0] = vec3(3.6, 3.05, 2.3) * sh;
+  Ls[1] = normalize(vec3(-0.9, 0.15, 0.45)); Cs[1] = vec3(0.35, 0.6, 1.5);
+  Ls[2] = normalize(vec3(-0.3, 0.45, -1.0)); Cs[2] = vec3(0.3, 2.4, 3.0);
+  for (int i = 0; i < 3; i++) {
+    vec3 L = Ls[i];
+    vec3 H = normalize(L + V);
+    float NdL = max(dot(N, L), 0.0);
+    float NdH = max(dot(N, H), 0.0);
+    float a = rough * rough, a2 = a * a;
+    float d = NdH * NdH * (a2 - 1.0) + 1.0;
+    float D = a2 / (PI * d * d);
+    float k = (rough + 1.0) * (rough + 1.0) / 8.0;
+    float G = (NdL / (NdL * (1.0 - k) + k)) * (NdV / (NdV * (1.0 - k) + k));
+    vec3 F = F0 + (1.0 - F0) * pow(1.0 - max(dot(H, V), 0.0), 5.0);
+    vec3 spec = D * G * F / (4.0 * NdL * NdV + 0.001);
+    vec3 diff = (1.0 - F) * (1.0 - metal) * albedo / PI;
+    Lo += (diff + spec) * Cs[i] * NdL;
+  }
+  // Освещение окружением: отражения студии + рассеянный свет
+  vec3 R = reflect(-V, N);
+  vec3 spec = envBlur(R, rough) * Fv * mix(0.55, 1.0, sh);
+  vec3 irr = envBlur(N, 1.0) * 0.55;
+  vec3 diffuse = irr * albedo * (1.0 - metal) * (1.0 - Fv);
+  // Мягкое затенение снизу (контакт с подиумом) — имитация ambient occlusion
+  float ao = mix(0.55, 1.0, smoothstep(-1.2, 0.3, vP.y));
+  vec3 col = Lo + (spec + diffuse) * ao + albedo * uGlow * 2.0;
+  // Камни (очень гладкие диэлектрики): свет проходит сквозь грани — преломление + внутренний блеск
+  if (rough < 0.07) {
+    vec3 T = refract(-V, N, 0.6);
+    vec3 inner = envBlur(T, 0.25) + envBlur(reflect(T, N), 0.4) * 0.5;
+    col += albedo * inner * (1.0 - Fv) * 1.1 + albedo * 0.08;
+  }
+  col = aces(col * 0.9);
+  col = pow(col, vec3(1.0 / 2.2));
+  gl_FragColor = vec4(col, uAlpha);
+}`;
+
+// Проход теней: глубина из позиции ключевого света, упакованная в RGBA (WebGL1)
+const VS_SH = `
+attribute vec3 aPos; uniform mat4 uModel; uniform mat4 uLightVP;
+void main(){ gl_Position = uLightVP * uModel * vec4(aPos, 1.0); }`;
+const FS_SH = `
+precision highp float;
+vec4 pack(float d){ vec4 e = fract(vec4(1.0, 255.0, 65025.0, 16581375.0) * d); e -= e.yzww * vec4(1.0/255.0, 1.0/255.0, 1.0/255.0, 0.0); return e; }
+void main(){ gl_FragColor = pack(gl_FragCoord.z); }`;
+
+// Ключевой свет и его матрица (ортографическая проекция охватывает объект и подиум)
+const KEY_DIR = (() => {
+  const v = [0.5, 1.0, 0.55];
+  const l = Math.hypot(...v);
+  return v.map((x) => x / l);
+})();
+const LIGHT_VP = M.mul(M.ortho(-2.4, 2.4, -2.4, 2.4, 0.5, 9), M.lookAt(KEY_DIR.map((x) => x * 4.5), [0, -0.3, 0], [0, 1, 0]));
+const FLOOR_Y = -1.12;
 
 // ---------------- Сцена (один WebGL-контекст на холст) ----------------
 export class Stage {
@@ -241,27 +414,49 @@ export class Stage {
     const gl = canvas.getContext('webgl', { alpha: true, antialias: true, premultipliedAlpha: false });
     this.gl = gl;
     if (!gl) return;
-    const sh = (type, src) => {
-      const s = gl.createShader(type);
-      gl.shaderSource(s, src);
-      gl.compileShader(s);
-      if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
-      return s;
+    const compile = (vs, fs) => {
+      const sh = (type, src) => {
+        const s = gl.createShader(type);
+        gl.shaderSource(s, src);
+        gl.compileShader(s);
+        if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+        return s;
+      };
+      const p = gl.createProgram();
+      gl.attachShader(p, sh(gl.VERTEX_SHADER, vs));
+      gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs));
+      gl.linkProgram(p);
+      if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+      return p;
     };
-    const p = gl.createProgram();
-    gl.attachShader(p, sh(gl.VERTEX_SHADER, VS));
-    gl.attachShader(p, sh(gl.FRAGMENT_SHADER, FS));
-    gl.linkProgram(p);
-    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
-    this.prog = p;
-    this.loc = Object.fromEntries(
-      ['aPos', 'aNor', 'aCol'].map((n) => [n, gl.getAttribLocation(p, n)]).concat(
-        ['uModel', 'uView', 'uProj', 'uNM', 'uCam', 'uSpec', 'uAlpha', 'uGlow'].map((n) => [n, gl.getUniformLocation(p, n)])
-      )
-    );
+    this.prog = compile(VS, FS);
+    this.shProg = compile(VS_SH, FS_SH);
+    const L = (p, names, attrs) => Object.fromEntries([...attrs.map((n) => [n, gl.getAttribLocation(p, n)]), ...names.map((n) => [n, gl.getUniformLocation(p, n)])]);
+    this.loc = L(this.prog, ['uModel', 'uView', 'uProj', 'uLightVP', 'uNM', 'uCam', 'uKeyDir', 'uShadow', 'uAlpha', 'uGlow', 'uFloor', 'uShadowOn'], ['aPos', 'aNor', 'aCol', 'aMat']);
+    this.shLoc = L(this.shProg, ['uModel', 'uLightVP'], ['aPos']);
+
+    // Карта теней
+    this.shadowTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.shadowTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, SHADOW_SIZE, SHADOW_SIZE, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    const rb = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER, rb);
+    gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, SHADOW_SIZE, SHADOW_SIZE);
+    this.fbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.shadowTex, 0);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, rb);
+    this.shadowsOk = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
     gl.enable(gl.DEPTH_TEST);
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    this.floorMesh = this.mesh('floor');
     this.last = performance.now();
     const loop = (t) => {
       this.frame(t);
@@ -289,22 +484,34 @@ export class Stage {
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(arr), gl.STATIC_DRAW);
       return b;
     };
-    const m = { pos: buf(model.geo.pos), nor: buf(model.geo.nor), col: buf(model.geo.col), count: model.geo.pos.length / 3, spec: model.spec, size: model.size };
+    const m = { pos: buf(model.geo.pos), nor: buf(model.geo.nor), col: buf(model.geo.col), mat: buf(model.geo.mat), count: model.geo.pos.length / 3, size: model.size };
     this.meshes.set(key, m);
     return m;
   }
-  draw(mesh, model, alpha = 1, glow = 0) {
+  bindAttrs(loc, mesh, full) {
+    const gl = this.gl;
+    const list = full ? [['aPos', mesh.pos, 3], ['aNor', mesh.nor, 3], ['aCol', mesh.col, 3], ['aMat', mesh.mat, 2]] : [['aPos', mesh.pos, 3]];
+    for (const [attr, b, size] of list) {
+      if (loc[attr] < 0) continue;
+      gl.bindBuffer(gl.ARRAY_BUFFER, b);
+      gl.enableVertexAttribArray(loc[attr]);
+      gl.vertexAttribPointer(loc[attr], size, gl.FLOAT, false, 0, 0);
+    }
+  }
+  drawShadow(mesh, model) {
+    const gl = this.gl;
+    gl.uniformMatrix4fv(this.shLoc.uModel, false, model);
+    this.bindAttrs(this.shLoc, mesh, false);
+    gl.drawArrays(gl.TRIANGLES, 0, mesh.count);
+  }
+  draw(mesh, model, { alpha = 1, glow = 0, floor = 0 } = {}) {
     const { gl, loc } = this;
     gl.uniformMatrix4fv(loc.uModel, false, model);
     gl.uniformMatrix3fv(loc.uNM, false, M.normal3(model));
-    gl.uniform1f(loc.uSpec, mesh.spec);
     gl.uniform1f(loc.uAlpha, alpha);
     gl.uniform1f(loc.uGlow, glow);
-    for (const [attr, b] of [['aPos', mesh.pos], ['aNor', mesh.nor], ['aCol', mesh.col]]) {
-      gl.bindBuffer(gl.ARRAY_BUFFER, b);
-      gl.enableVertexAttribArray(loc[attr]);
-      gl.vertexAttribPointer(loc[attr], 3, gl.FLOAT, false, 0, 0);
-    }
+    gl.uniform1f(loc.uFloor, floor);
+    this.bindAttrs(loc, mesh, true);
     gl.drawArrays(gl.TRIANGLES, 0, mesh.count);
   }
   frame(t) {
@@ -320,12 +527,11 @@ export class Stage {
       canvas.height = ch;
     }
     gl.disable(gl.SCISSOR_TEST);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, cw, ch);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
     if (!this.views.size) return;
-    gl.enable(gl.SCISSOR_TEST);
-    gl.useProgram(this.prog);
     const cr = canvas.getBoundingClientRect();
     for (const v of this.views) {
       const r = v.el.getBoundingClientRect();
@@ -333,12 +539,42 @@ export class Stage {
         v.update(dt, false);
         continue;
       }
+      v.update(dt, true);
+      const models = v.models();
+      // 1) Тени: глубина от ключевого света
+      if (this.shadowsOk) {
+        gl.disable(gl.SCISSOR_TEST);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.fbo);
+        gl.viewport(0, 0, SHADOW_SIZE, SHADOW_SIZE);
+        gl.clearColor(1, 1, 1, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+        gl.disable(gl.BLEND);
+        gl.useProgram(this.shProg);
+        gl.uniformMatrix4fv(this.shLoc.uLightVP, false, LIGHT_VP);
+        for (const [mesh, model] of models) this.drawShadow(mesh, model);
+        gl.enable(gl.BLEND);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.clearColor(0, 0, 0, 0);
+      }
+      // 2) Основной проход в область витрины
       const x = Math.round((r.left - cr.left) * dpr), y = Math.round((cr.bottom - r.bottom) * dpr), w = Math.round(r.width * dpr), h = Math.round(r.height * dpr);
+      gl.enable(gl.SCISSOR_TEST);
       gl.viewport(x, y, w, h);
       gl.scissor(x, y, w, h);
       gl.clear(gl.DEPTH_BUFFER_BIT);
-      v.update(dt, true);
-      v.render(w / h);
+      gl.useProgram(this.prog);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.shadowTex);
+      gl.uniform1i(this.loc.uShadow, 0);
+      gl.uniform1f(this.loc.uShadowOn, this.shadowsOk ? 1 : 0);
+      gl.uniformMatrix4fv(this.loc.uLightVP, false, LIGHT_VP);
+      gl.uniform3fv(this.loc.uKeyDir, KEY_DIR);
+      v.camera(w / h);
+      // Подиум рисуется первым и не пишет глубину, чтобы не перекрывать объект
+      gl.depthMask(false);
+      this.draw(this.floorMesh, M.trans(0, FLOOR_Y, 0), { floor: 1 });
+      gl.depthMask(true);
+      for (const [mesh, model, opts] of models) this.draw(mesh, model, opts);
     }
   }
   add(el, opts) {
@@ -350,7 +586,7 @@ export class Stage {
 
 // ---------------- Витрина (орбитальное управление) ----------------
 class View {
-  constructor(stage, el, { model = 'logo', variant = 0, autoRotate = true, wheel = false, touch = 'pan-y', float = true, onTap = null, distance = 3.4, theta = 0.5, phi = 1.25 } = {}) {
+  constructor(stage, el, { model = 'logo', variant = 0, autoRotate = true, wheel = false, touch = 'pan-y', float = true, onTap = null, distance = 3.6, theta = 0.5, phi = 1.22 } = {}) {
     Object.assign(this, { stage, el, model, variant, autoRotate: autoRotate && !REDUCED, wheel, float: float && !REDUCED, onTap });
     this.theta = theta;
     this.phi = phi;
@@ -361,6 +597,7 @@ class View {
     this.idle = 10;
     this.time = Math.random() * 10;
     this.particles = [];
+    this.glow = 0;
     this.mesh = stage.mesh(model, variant);
     this.shard = stage.mesh('shard');
     this.pointers = new Map();
@@ -368,13 +605,7 @@ class View {
     el.style.touchAction = touch === 'none' ? 'none' : 'pan-y';
     if (!el.hasAttribute('tabindex')) el.tabIndex = 0;
     el.setAttribute('role', 'img');
-    this.h = {
-      down: (e) => this.down(e),
-      move: (e) => this.move(e),
-      up: (e) => this.up(e),
-      wheel: (e) => this.onWheel(e),
-      key: (e) => this.onKey(e),
-    };
+    this.h = { down: (e) => this.down(e), move: (e) => this.move(e), up: (e) => this.up(e), wheel: (e) => this.onWheel(e), key: (e) => this.onKey(e) };
     el.addEventListener('pointerdown', this.h.down);
     el.addEventListener('pointermove', this.h.move);
     el.addEventListener('pointerup', this.h.up);
@@ -406,7 +637,6 @@ class View {
     p.y = e.clientY;
     this.idle = 0;
     if (this.pointers.size === 2) {
-      // Щипок: изменение расстояния между пальцами = зум
       const [a, b] = [...this.pointers.values()];
       const d = Math.hypot(a.x - b.x, a.y - b.y);
       if (this.pinch) this.zoom(this.pinch / d);
@@ -417,7 +647,7 @@ class View {
     this.vt = -dx * k * 60;
     this.vp = -dy * k * 60;
     this.theta += -dx * k;
-    this.phi = Math.min(Math.PI - 0.15, Math.max(0.15, this.phi - dy * k));
+    this.phi = Math.min(1.62, Math.max(0.2, this.phi - dy * k));
   }
   up(e) {
     const p = this.pointers.get(e.pointerId);
@@ -437,7 +667,15 @@ class View {
   }
   onKey(e) {
     const step = 0.18;
-    const map = { ArrowLeft: () => (this.theta -= step), ArrowRight: () => (this.theta += step), ArrowUp: () => (this.phi = Math.max(0.15, this.phi - step)), ArrowDown: () => (this.phi = Math.min(Math.PI - 0.15, this.phi + step)), '+': () => this.zoom(0.9), '=': () => this.zoom(0.9), '-': () => this.zoom(1.1) };
+    const map = {
+      ArrowLeft: () => (this.theta -= step),
+      ArrowRight: () => (this.theta += step),
+      ArrowUp: () => (this.phi = Math.max(0.2, this.phi - step)),
+      ArrowDown: () => (this.phi = Math.min(1.62, this.phi + step)),
+      '+': () => this.zoom(0.9),
+      '=': () => this.zoom(0.9),
+      '-': () => this.zoom(1.1),
+    };
     if (map[e.key]) {
       e.preventDefault();
       map[e.key]();
@@ -448,52 +686,57 @@ class View {
     this.time += dt;
     this.idle += dt;
     if (!this.pointers.size) {
-      // Инерция с затуханием после отпускания
       const damp = Math.exp(-dt * 3.2);
       this.vt *= damp;
       this.vp *= damp;
       this.theta += this.vt * dt;
-      this.phi = Math.min(Math.PI - 0.15, Math.max(0.15, this.phi + this.vp * dt));
-      // Авто-вращение возвращается через 2.5 с после взаимодействия
-      if (this.autoRotate && this.idle > 2.5) this.theta += dt * 0.45 * Math.min(1, (this.idle - 2.5) / 1.5);
+      this.phi = Math.min(1.62, Math.max(0.2, this.phi + this.vp * dt));
+      if (this.autoRotate && this.idle > 2.5) this.theta += dt * 0.42 * Math.min(1, (this.idle - 2.5) / 1.5);
     }
     if (!visible) return;
     for (const p of this.particles) {
       p.v[1] -= 3.2 * dt;
       for (let i = 0; i < 3; i++) p.p[i] += p.v[i] * dt;
+      if (p.p[1] < FLOOR_Y + 0.05 && p.v[1] < 0) {
+        p.p[1] = FLOOR_Y + 0.05;
+        p.v[1] *= -0.35;
+        p.v[0] *= 0.7;
+        p.v[2] *= 0.7;
+      }
       p.r += p.rv * dt;
       p.life -= dt;
     }
     this.particles = this.particles.filter((p) => p.life > 0);
+    if (this.glow) this.glow = Math.max(0, this.glow - dt * 1.2);
   }
-  render(aspect) {
+  camera(aspect) {
     const s = this.stage;
     const gl = s.gl;
     const eye = [this.radius * Math.sin(this.phi) * Math.sin(this.theta), this.radius * Math.cos(this.phi), this.radius * Math.sin(this.phi) * Math.cos(this.theta)];
     const fit = aspect < 1 ? 1 / aspect : 1;
-    const proj = M.persp(32 * Math.min(1.6, fit), aspect, 0.1, 50);
-    const view = M.lookAt(eye, [0, 0, 0], [0, 1, 0]);
-    gl.uniformMatrix4fv(s.loc.uProj, false, proj);
-    gl.uniformMatrix4fv(s.loc.uView, false, view);
+    gl.uniformMatrix4fv(s.loc.uProj, false, M.persp(32 * Math.min(1.6, fit), aspect, 0.1, 50));
+    gl.uniformMatrix4fv(s.loc.uView, false, M.lookAt(eye, [0, -0.08, 0], [0, 1, 0]));
     gl.uniform3fv(s.loc.uCam, eye);
-    const bob = this.float ? Math.sin(this.time * 1.3) * 0.08 : 0;
-    const tilt = this.float ? Math.sin(this.time * 0.7) * 0.06 : 0;
-    const scale = 1 / this.mesh.size;
-    s.draw(this.mesh, M.chain(M.trans(0, bob, 0), M.rotZ(tilt), M.scale(scale)), 1, this.glow || 0);
+  }
+  // Объекты витрины: [меш, матрица, параметры]
+  models() {
+    const bob = this.float ? Math.sin(this.time * 1.3) * 0.07 : 0;
+    const tilt = this.float ? Math.sin(this.time * 0.7) * 0.05 : 0;
+    const list = [[this.mesh, M.chain(M.trans(0, bob, 0), M.rotZ(tilt), M.scale(1 / this.mesh.size)), { glow: this.glow }]];
     for (const p of this.particles) {
       const a = Math.min(1, p.life / 0.5);
-      s.draw(this.shard, M.chain(M.trans(p.p[0], p.p[1], p.p[2]), M.rotY(p.r), M.rotX(p.r * 0.7), M.scale(p.s * (0.4 + 0.6 * a))), a, 0.35);
+      list.push([this.shard, M.chain(M.trans(p.p[0], p.p[1], p.p[2]), M.rotY(p.r), M.rotX(p.r * 0.7), M.scale(p.s * (0.4 + 0.6 * a))), { alpha: a, glow: 0.25 }]);
     }
-    if (this.glow) this.glow = Math.max(0, this.glow - 0.02);
+    return list;
   }
   // Салют золотых кристаллов (обмен баллов на награду)
   burst(count = 90) {
     if (REDUCED) return Promise.resolve();
     for (let i = 0; i < count; i++) {
       const a = Math.random() * Math.PI * 2, el = Math.random() * Math.PI - Math.PI / 2, sp = 1.6 + Math.random() * 2.6;
-      this.particles.push({ p: [0, 0, 0], v: [Math.cos(a) * Math.cos(el) * sp, Math.abs(Math.sin(el)) * sp + 1.2, Math.sin(a) * Math.cos(el) * sp], r: Math.random() * 6, rv: (Math.random() - 0.5) * 14, s: 0.6 + Math.random() * 1.1, life: 1.1 + Math.random() * 0.8 });
+      this.particles.push({ p: [0, 0, 0], v: [Math.cos(a) * Math.cos(el) * sp, Math.abs(Math.sin(el)) * sp + 1.2, Math.sin(a) * Math.cos(el) * sp], r: Math.random() * 6, rv: (Math.random() - 0.5) * 14, s: 0.6 + Math.random() * 1.1, life: 1.3 + Math.random() * 0.9 });
     }
-    this.glow = 0.9;
+    this.glow = 0.6;
     this.idle = 0;
     this.vt = 6;
     return new Promise((r) => setTimeout(r, 1300));
@@ -507,7 +750,8 @@ export function pageStageFor(canvas) {
     try {
       pageStage = new Stage(canvas);
       if (!pageStage.ok) pageStage = false;
-    } catch {
+    } catch (e) {
+      console.warn('[3D] WebGL недоступен, показываем изображения:', e.message);
       pageStage = false;
     }
   }

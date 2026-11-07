@@ -1,0 +1,17 @@
+/* Общая плашка для демо-продуктов внутри ATTENTION BANK */
+.ab-strip {
+  position: sticky; top: 0; z-index: 50;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 8px 16px; font: 13px/1.4 system-ui, -apple-system, 'Segoe UI', sans-serif;
+  background: #060C14; color: #B9C6D6; border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+.ab-strip b { color: #F2B705; font-weight: 700; }
+.ab-strip a { color: #19B3D4; text-decoration: none; margin-left: auto; font-weight: 600; }
+.ab-strip a:hover { text-decoration: underline; }
+.copy-box {
+  display: flex; gap: 8px; align-items: stretch; flex-wrap: wrap;
+}
+.copy-box textarea {
+  flex: 1 1 260px; min-height: 104px; resize: vertical; border-radius: 10px; padding: 10px 12px;
+  font: 14px/1.45 ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+}

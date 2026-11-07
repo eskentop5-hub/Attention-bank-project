@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Steppe Runner — страница игры</title>
+<meta name="theme-color" content="#0F1115">
+<link rel="stylesheet" href="/play/play.css">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #0F1115; color: #E9ECF1; font: 15px/1.55 system-ui, -apple-system, 'Segoe UI', sans-serif; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 22px 18px 50px; }
+  .top { display: grid; grid-template-columns: 1.55fr 1fr; gap: 22px; align-items: start; }
+  .player { position: relative; border-radius: 14px; overflow: hidden; background: #000; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); }
+  .player canvas { display: block; width: 100%; aspect-ratio: 16 / 9; }
+  .cap { position: absolute; left: 0; right: 0; bottom: 46px; text-align: center; font: 800 clamp(18px, 3.2vw, 34px)/1.15 system-ui, sans-serif; color: #fff; text-shadow: 0 3px 18px rgba(0, 0, 0, 0.8); opacity: 0; transform: translateY(8px); transition: opacity 0.5s, transform 0.5s; padding: 0 20px; pointer-events: none; }
+  .cap.on { opacity: 1; transform: none; }
+  .bar { position: absolute; left: 0; right: 0; bottom: 0; display: flex; align-items: center; gap: 12px; padding: 8px 12px; background: linear-gradient(transparent, rgba(0, 0, 0, 0.75)); }
+  .bar button { background: rgba(255, 255, 255, 0.14); color: #fff; border: 0; border-radius: 8px; width: 38px; height: 30px; cursor: pointer; font-size: 14px; }
+  .track { flex: 1; height: 4px; background: rgba(255, 255, 255, 0.2); border-radius: 4px; overflow: hidden; }
+  .track i { display: block; height: 100%; width: 0; background: #F2B705; }
+  .time { font: 600 13px ui-monospace, monospace; color: #D7DDE6; min-width: 82px; text-align: right; }
+  .badge { position: absolute; top: 10px; left: 10px; font: 700 11px system-ui; letter-spacing: 0.06em; background: rgba(0, 0, 0, 0.55); padding: 4px 8px; border-radius: 6px; color: #F2B705; }
+  .shots { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 12px; }
+  .shots figure { margin: 0; aspect-ratio: 16 / 9; border-radius: 10px; overflow: hidden; background: #1A1E26; display: grid; place-items: center; color: #6B7686; font-size: 12px; }
+  .shots img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  aside { background: #171A21; border: 1px solid #242A35; border-radius: 14px; padding: 18px; }
+  .cover { aspect-ratio: 460 / 215; border-radius: 10px; background: linear-gradient(120deg, #F2B705 0%, #E2662C 45%, #3B2A6B 100%); display: grid; place-items: center; position: relative; overflow: hidden; }
+  .cover strong { font: 900 34px/1 system-ui, sans-serif; color: #1A0F06; letter-spacing: -0.02em; text-shadow: 0 2px 0 rgba(255, 255, 255, 0.25); }
+  .cover::after { content: ''; position: absolute; inset: auto -10% -40% -10%; height: 70%; background: #2B1A12; border-radius: 50% 50% 0 0; opacity: 0.55; }
+  h1 { margin: 14px 0 4px; font-size: 26px; }
+  .short { color: #AEB7C4; margin: 0 0 14px; }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0 0 14px; font-size: 14px; }
+  dt { color: #7C8797; }
+  dd { margin: 0; }
+  .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+  .tags span { background: #232937; color: #BFC8D6; border-radius: 6px; padding: 3px 9px; font-size: 13px; }
+  .cta { display: block; text-align: center; background: linear-gradient(180deg, #FFCB2E, #E5A800); color: #1A1206; font-weight: 800; text-decoration: none; padding: 13px; border-radius: 10px; font-size: 16px; }
+  .cta:hover { filter: brightness(1.06); }
+  .note { font-size: 12px; color: #7C8797; margin: 10px 0 0; }
+  .body { display: grid; grid-template-columns: 1.55fr 1fr; gap: 22px; margin-top: 26px; }
+  h2 { font-size: 18px; margin: 0 0 10px; }
+  ul.f { padding-left: 18px; margin: 0 0 18px; color: #C9D1DC; }
+  .req { background: #171A21; border: 1px solid #242A35; border-radius: 14px; padding: 18px; font-size: 14px; color: #C9D1DC; }
+  .rating { display: flex; gap: 10px; align-items: center; background: #171A21; border: 1px dashed #343C4B; border-radius: 12px; padding: 12px 14px; color: #AEB7C4; margin-bottom: 18px; font-size: 14px; }
+  @media (max-width: 820px) { .top, .body { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="ab-strip"><b>Демо-продукт</b> Страница и трейлер работают по-настоящему. Студия Nomad Pixel Studio — демонстрационная, в реальных магазинах игры нет. <a href="/#/tasks">← Вернуться к заданию</a></div>
+<div class="wrap">
+  <div class="top">
+    <div>
+      <div class="player" id="player">
+        <canvas id="cv" width="960" height="540" aria-label="Трейлер: игровой процесс Steppe Runner на автопилоте"></canvas>
+        <span class="badge">ТРЕЙЛЕР · ИГРОВОЙ ПРОЦЕСС</span>
+        <div class="cap" id="cap"></div>
+        <div class="bar">
+          <button id="pp" type="button" aria-label="Пауза">❚❚</button>
+          <div class="track"><i id="prog"></i></div>
+          <span class="time" id="time">0:00 / 0:40</span>
+        </div>
+      </div>
+      <div class="shots" id="shots" aria-label="Скриншоты">
+        <figure>скриншот появится<br>во время трейлера</figure><figure>…</figure><figure>…</figure>
+      </div>
+    </div>
+    <aside>
+      <div class="cover" aria-hidden="true"><strong>STEPPE RUNNER</strong></div>
+      <h1>Steppe Runner</h1>
+      <p class="short">Аркадный раннер про скачки по степи Казахстана: перепрыгивайте овраги и камни, собирайте монеты и встречайте закат и ночь на коне.</p>
+      <dl>
+        <dt>Разработчик</dt><dd>Nomad Pixel Studio <small>(демо)</small></dd>
+        <dt>Жанр</dt><dd>Раннер, казуальная аркада</dd>
+        <dt>Статус</dt><dd>Открытый бета-тест</dd>
+        <dt>Платформы</dt><dd>Браузер: телефон и ПК</dd>
+        <dt>Цена</dt><dd>Бесплатно</dd>
+      </dl>
+      <div class="tags"><span>Одна кнопка</span><span>Казахстан</span><span>Векторная графика</span><span>Короткие сессии</span></div>
+      <a class="cta" href="index.html">Играть в бету</a>
+      <p class="note">Без регистрации и скачивания. Прогресс хранится только на вашем устройстве.</p>
+    </aside>
+  </div>
+  <div class="body">
+    <div>
+      <h2>Об игре</h2>
+      <p>Вы — всадник в красном чапане, который мчится через бескрайнюю степь. Управление в одну кнопку: прыжок. Чем дальше, тем быстрее конь, шире овраги и чаще камни.</p>
+      <ul class="f">
+        <li><b>3 уровня</b> со сменой времени суток: утро в степи, закат над Каратау, ночь под звёздами.</li>
+        <li><b>Монеты</b> выстроены дугами над препятствиями: рискни ради них или прыгай безопасно.</li>
+        <li><b>Честная сложность</b>: уровни одинаковые для всех игроков, без случайных смертей.</li>
+        <li><b>Юрты, горы и параллакс</b>: степь живёт и меняет цвета.</li>
+      </ul>
+      <div class="rating">★ Оценок пока нет — игра в бета-тесте. Первые отзывы собираются через ATTENTION BANK.</div>
+    </div>
+    <div class="req">
+      <h2>Системные требования</h2>
+      <p style="margin:0">Любой современный браузер: Chrome, Safari, Firefox, Edge.<br>Телефон или компьютер, интернет нужен только для загрузки страницы (~30 КБ).</p>
+    </div>
+  </div>
+</div>
+<script type="module" src="store.js"></script>
+</body>
+</html>

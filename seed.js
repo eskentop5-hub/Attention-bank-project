@@ -8,6 +8,18 @@ export async function seedDemo({ log = console.log } = {}) {
   const C = await import('./services/campaigns.js');
   const R = await import('./services/rewards.js');
 
+  const { config } = await import('./config.js');
+  const PLAY = {
+    'steppe-runner-beta': `${config.publicUrl}/play/steppe-runner/index.html`,
+    'steppe-runner-store': `${config.publicUrl}/play/steppe-runner/store.html`,
+    'qadam-beta': `${config.publicUrl}/play/qadam/index.html`,
+    'inventory-prototype': `${config.publicUrl}/play/inventory/index.html`,
+  };
+  // Базы, созданные прошлыми версиями: заменить заглушки example.com на встроенные продукты
+  for (const [slug, link] of Object.entries(PLAY)) {
+    run("UPDATE campaigns SET product_url = ? WHERE product_url = ? AND company_id IN (SELECT id FROM users WHERE is_demo = 1)", link, `https://example.com/${slug}`);
+  }
+
   if (one("SELECT id FROM users WHERE role = 'company' LIMIT 1")) return false;
   tx(() => {
 
@@ -30,11 +42,11 @@ export async function seedDemo({ log = console.log } = {}) {
   const playtest = C.createCampaign(studio, {
     title: 'Плейтест Steppe Runner: первые 15 минут',
     description:
-      'Steppe Runner — мобильный раннер про гонку по степи на коне. Установите тестовую сборку, пройдите обучение и первые три уровня, затем ответьте на вопросы. Нам важно понять, где игроки путаются и в какой момент теряют интерес.',
+      'Steppe Runner — браузерный раннер про гонку по степи на коне: овраги, камни, монеты, смена дня и ночи. Откройте тестовую сборку прямо в браузере, пройдите обучение и три уровня, затем ответьте на вопросы. Нам важно понять, где игроки путаются и в какой момент теряют интерес.',
     category: 'game_testing',
-    productUrl: 'https://example.com/steppe-runner-beta',
+    productUrl: PLAY['steppe-runner-beta'],
     estMinutes: 15,
-    instructions: 'Установите тестовую сборку по ссылке.\nПройдите обучение и первые три уровня.\nЗапомните моменты, где было непонятно или скучно.\nОтветьте на вопросы ниже.',
+    instructions: 'Нажмите «Открыть продукт» — игра запустится в браузере, устанавливать ничего не нужно.\nПройдите обучение и три уровня (утро, закат, ночь).\nЗапомните моменты, где было непонятно, скучно или нечестно.\nПо желанию скопируйте итоги теста под игрой и приложите к ответу.\nОтветьте на вопросы ниже.',
     audience: ['mobile_games', 'indie_games', 'beta_testing'],
     reward: 50,
     maxParticipants: 20,
@@ -50,11 +62,11 @@ export async function seedDemo({ log = console.log } = {}) {
   const trailer = C.createCampaign(studio, {
     title: 'Первое впечатление: страница игры и трейлер',
     description:
-      'Посмотрите 40-секундный трейлер и страницу игры в магазине. Расскажите, что вы поняли об игре и захотелось ли её скачать. Ответы с хорошей оценкой качества одобряются автоматически.',
+      'Посмотрите 40-секундный трейлер и страницу игры Steppe Runner в магазине. Расскажите, что вы поняли об игре и захотелось ли её скачать. Ответы с хорошей оценкой качества одобряются автоматически.',
     category: 'game_feedback',
-    productUrl: 'https://example.com/steppe-runner-store',
+    productUrl: PLAY['steppe-runner-store'],
     estMinutes: 3,
-    instructions: 'Посмотрите трейлер на странице игры.\nПролистайте скриншоты и описание.\nОтветьте, что вы поняли об игре.',
+    instructions: 'Откройте страницу игры и досмотрите трейлер до конца (40 секунд).\nПролистайте скриншоты, описание и особенности.\nОтветьте, что вы поняли об игре и захотелось ли в неё сыграть.',
     audience: ['mobile_games', 'pc_games', 'indie_games'],
     reward: 20,
     maxParticipants: 50,
@@ -70,11 +82,11 @@ export async function seedDemo({ log = console.log } = {}) {
   const onboarding = C.createCampaign(qadam, {
     title: 'Тест онбординга приложения Qadam',
     description:
-      'Qadam — приложение для подготовки к ЕНТ в формате коротких ежедневных шагов. Пройдите регистрацию и первый урок. Нас интересует, что мешает дойти до конца онбординга.',
+      'Qadam — приложение для подготовки к ЕНТ в формате коротких ежедневных шагов. Интерактивный прототип открывается в браузере: регистрация, выбор предметов, цель на день и первый урок из 5 вопросов. Нас интересует, что мешает дойти до конца онбординга.',
     category: 'app_testing',
-    productUrl: 'https://example.com/qadam-beta',
+    productUrl: PLAY['qadam-beta'],
     estMinutes: 20,
-    instructions: 'Установите бета-версию Qadam.\nЗарегистрируйтесь и выберите предметы ЕНТ.\nПройдите первый урок до конца.\nПриложите ссылку на скриншот экрана, где возникла трудность (если была).',
+    instructions: 'Откройте прототип Qadam по кнопке «Открыть продукт».\nЗарегистрируйтесь и выберите пару профильных предметов ЕНТ.\nПройдите первый урок до конца.\nСправа от телефона есть автоматический отчёт (время на экранах, ошибки) — его можно вставить в ответ.\nПриложите ссылку на скриншот экрана, где возникла трудность (если была).',
     audience: ['mobile_apps', 'edtech', 'beta_testing'],
     reward: 100,
     maxParticipants: 15,
@@ -93,9 +105,9 @@ export async function seedDemo({ log = console.log } = {}) {
     description:
       'Сравните два варианта меню инвентаря (A и B) на интерактивном прототипе и выберите удобный. Задание только для участников с подтверждённым через Telegram аккаунтом.',
     category: 'ux_research',
-    productUrl: 'https://example.com/inventory-prototype',
+    productUrl: PLAY['inventory-prototype'],
     estMinutes: 8,
-    instructions: 'Откройте прототип и найдите в инвентаре «Зелье лечения» в варианте A.\nСделайте то же в варианте B.\nСравните, где было быстрее и понятнее.',
+    instructions: 'Откройте прототип и нажмите «Начать замер» в варианте A — найдите «Зелье лечения».\nСделайте то же в варианте B.\nСравните время и промахи в таблице справа, итог можно скопировать.\nОтветьте, какой вариант удобнее и почему.',
     audience: ['ux_design', 'mobile_games', 'pc_games'],
     reward: 40,
     maxParticipants: 30,

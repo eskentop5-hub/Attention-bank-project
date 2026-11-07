@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Инвентарь: A/B-прототип — Nomad Pixel Studio</title>
+<meta name="theme-color" content="#14110F">
+<link rel="stylesheet" href="/play/play.css">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: radial-gradient(900px 500px at 20% 0%, #2A2219, #110E0B 65%); color: #EDE3D1; font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 20px 16px 50px; }
+  h1 { margin: 0 0 4px; font-size: 24px; }
+  .sub { color: #A79A86; margin: 0 0 16px; }
+  .layout { display: grid; grid-template-columns: 1fr 320px; gap: 18px; align-items: start; }
+  .tabsAB { display: flex; gap: 8px; margin-bottom: 12px; }
+  .tabsAB button { flex: 1; border: 1px solid #4A3D2E; background: #1E1914; color: #EDE3D1; border-radius: 12px; padding: 10px; font: 700 15px system-ui; cursor: pointer; }
+  .tabsAB button[aria-selected='true'] { background: #D9A441; color: #1A120A; border-color: #D9A441; }
+  .tabsAB button .done { font-weight: 500; font-size: 12px; display: block; opacity: 0.8; }
+  .inv { background: linear-gradient(#2B231B, #201A14); border: 2px solid #5A4733; border-radius: 16px; padding: 14px; box-shadow: inset 0 0 0 2px #15110D, 0 20px 50px rgba(0, 0, 0, 0.5); position: relative; min-height: 420px; }
+  .inv-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; flex-wrap: wrap; }
+  .inv-head strong { font-size: 16px; letter-spacing: 0.06em; text-transform: uppercase; color: #E8C27A; }
+  .weight { margin-left: auto; color: #A79A86; font-size: 13px; }
+  .gridA { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; }
+  .slot { aspect-ratio: 1; border-radius: 10px; background: #15110D; border: 1px solid #3B3024; display: grid; place-items: center; cursor: pointer; position: relative; padding: 4px; color: inherit; font: inherit; }
+  .slot:hover, .slot:focus-visible { border-color: #D9A441; outline: none; box-shadow: 0 0 0 2px rgba(217, 164, 65, 0.35); }
+  .slot svg { width: 78%; height: 78%; filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.5)); }
+  .slot .n { position: absolute; right: 4px; bottom: 2px; font-size: 11px; font-weight: 700; color: #EDE3D1; text-shadow: 0 1px 2px #000; }
+  .slot.wrong { animation: shake 0.3s; border-color: #C0453A; }
+  .slot.right { border-color: #5BC27A; box-shadow: 0 0 0 3px rgba(91, 194, 122, 0.4); }
+  @keyframes shake { 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
+  .tip { position: fixed; pointer-events: none; background: #0B0907; border: 1px solid #5A4733; color: #EDE3D1; padding: 5px 9px; border-radius: 8px; font-size: 13px; z-index: 20; display: none; white-space: nowrap; }
+  .cats { display: flex; gap: 6px; flex-wrap: wrap; }
+  .cats button { border: 1px solid #4A3D2E; background: #1A1511; color: #D8CBB4; border-radius: 99px; padding: 6px 12px; font: 600 13px system-ui; cursor: pointer; }
+  .cats button[aria-pressed='true'] { background: #E8C27A; color: #1A120A; border-color: #E8C27A; }
+  .search { flex: 1 1 200px; border: 1px solid #4A3D2E; background: #15110D; color: #EDE3D1; border-radius: 10px; padding: 8px 12px; font: 14px system-ui; }
+  .gridB { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 8px; margin-top: 12px; }
+  .row { display: flex; align-items: center; gap: 10px; background: #15110D; border: 1px solid #3B3024; border-radius: 12px; padding: 8px; cursor: pointer; text-align: left; color: inherit; font: inherit; }
+  .row:hover, .row:focus-visible { border-color: #D9A441; outline: none; }
+  .row svg { width: 38px; height: 38px; flex: none; }
+  .row b { display: block; font-size: 13px; line-height: 1.25; }
+  .row small { color: #A79A86; font-size: 11px; }
+  .row.wrong { animation: shake 0.3s; border-color: #C0453A; }
+  .row.right { border-color: #5BC27A; }
+  .empty { color: #A79A86; padding: 30px; text-align: center; }
+  .cover { position: absolute; inset: 0; border-radius: 14px; background: rgba(16, 12, 9, 0.88); display: grid; place-items: center; text-align: center; padding: 24px; z-index: 5; }
+  .cover h2 { margin: 0 0 6px; }
+  .cover p { color: #CDBFA8; margin: 0 0 16px; max-width: 420px; }
+  .go { border: 0; background: #D9A441; color: #1A120A; font: 800 16px system-ui; padding: 12px 26px; border-radius: 12px; cursor: pointer; }
+  .timer { font: 700 15px ui-monospace, monospace; color: #E8C27A; }
+  aside { background: #1C1712; border: 1px solid #3B3024; border-radius: 16px; padding: 18px; }
+  aside h3 { margin: 0 0 10px; }
+  table { width: 100%; border-collapse: collapse; margin: 6px 0 14px; font-size: 14px; }
+  td, th { padding: 7px 4px; border-bottom: 1px solid #33291F; text-align: left; }
+  th { color: #A79A86; font-weight: 600; font-size: 12px; }
+  aside textarea { background: #120F0C; color: #EDE3D1; border: 1px solid #3B3024; }
+  aside button { border: 0; border-radius: 10px; padding: 9px 14px; font: 700 14px system-ui; background: #3B3024; color: #EDE3D1; cursor: pointer; }
+  .muted { color: #A79A86; font-size: 13px; }
+  .detail { margin-top: 12px; min-height: 26px; color: #CDBFA8; font-size: 14px; }
+  @media (max-width: 860px) { .layout { grid-template-columns: 1fr; } .gridA { grid-template-columns: repeat(6, 1fr); } }
+  @media (max-width: 420px) { .gridA { grid-template-columns: repeat(5, 1fr); } }
+</style>
+</head>
+<body>
+<div class="ab-strip"><b>Демо-продукт</b> Прототип работает по-настоящему, замеры остаются в браузере. Студия Nomad Pixel Studio — демонстрационная. <a href="/#/tasks">← Вернуться к заданию</a></div>
+<div class="wrap">
+  <h1>Новое меню инвентаря: A или B?</h1>
+  <p class="sub">Задача в обоих вариантах одна: <b>найдите и выберите «Зелье лечения»</b>. Время замеряется автоматически.</p>
+  <div class="layout">
+    <div>
+      <div class="tabsAB" role="tablist">
+        <button role="tab" id="tabA" aria-selected="true" data-v="A">Вариант A<span class="done" id="doneA">сетка иконок</span></button>
+        <button role="tab" id="tabB" aria-selected="false" data-v="B">Вариант B<span class="done" id="doneB">категории и поиск</span></button>
+      </div>
+      <div class="inv" id="inv"></div>
+    </div>
+    <aside>
+      <h3>Результаты</h3>
+      <table>
+        <thead><tr><th></th><th>Время</th><th>Промахи</th></tr></thead>
+        <tbody><tr><td>Вариант A</td><td id="rA-t">—</td><td id="rA-m">—</td></tr><tr><td>Вариант B</td><td id="rB-t">—</td><td id="rB-m">—</td></tr></tbody>
+      </table>
+      <p class="muted">Промах — выбор не того предмета. Замеры хранятся только в этой вкладке. Скопируйте итог в ответ на задание.</p>
+      <div class="copy-box"><textarea id="report" readonly aria-label="Итог сравнения"></textarea><button id="copy" type="button">Скопировать</button></div>
+      <p class="muted" style="margin-top:10px"><a href="#" id="reset" style="color:#E8C27A">Сбросить и пройти заново</a></p>
+    </aside>
+  </div>
+</div>
+<div class="tip" id="tip" role="tooltip"></div>
+<script type="module" src="inventory.js"></script>
+</body>
+</html>
