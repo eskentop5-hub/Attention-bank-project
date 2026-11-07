@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>ATTENTION BANK — Your Attention. Your Value.</title>
+  <meta name="description" content="Выбирайте задания от студий игр и приложений, получайте AB Points за подтверждённый результат и обменивайте их на награды.">
+  <meta name="theme-color" content="#060C14">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/icons/logo.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geologica:wght@500;600;700&family=Onest:wght@400;500;600&display=swap">
+  <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+  <div id="ribbon"></div>
+  <header class="topbar">
+    <div class="topbar-in">
+      <a class="brand" href="#/" aria-label="ATTENTION BANK — на главную">
+        <img src="/icons/logo.svg" alt="" width="32" height="32">
+        <span>ATTENTION BANK</span>
+      </a>
+      <nav class="nav" id="nav" aria-label="Основное меню"></nav>
+      <div class="top-actions" id="top-actions"></div>
+    </div>
+  </header>
+  <canvas id="stage3d" aria-hidden="true"></canvas>
+  <main id="app" tabindex="-1"></main>
+  <nav class="tabbar" id="tabbar" aria-label="Меню" hidden></nav>
+  <div class="toasts" id="toasts" role="status" aria-live="polite"></div>
+  <dialog class="modal" id="modal" aria-labelledby="modal-title"></dialog>
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>

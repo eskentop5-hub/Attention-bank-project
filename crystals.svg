@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">
+  <rect width="800" height="500" fill="#0e1a2b"/>
+  <circle cx="400" cy="290" r="210" fill="#0fa3c4" opacity=".14"/>
+  <g transform="translate(400 280)">
+    <polygon points="-60,-170 60,-170 110,-90 0,90 -110,-90" fill="#38c6e0"/>
+    <polygon points="-60,-170 0,-90 60,-170" fill="#9eeaf6"/>
+    <polygon points="-110,-90 0,-90 0,90" fill="#1596b4"/>
+    <polygon points="110,-90 0,-90 0,90" fill="#0c6e8a"/>
+    <polygon points="-60,-170 -110,-90 0,-90" fill="#6fdcef"/>
+  </g>
+  <g transform="translate(225 340) scale(.55)">
+    <polygon points="-60,-170 60,-170 110,-90 0,90 -110,-90" fill="#3ccf9a"/>
+    <polygon points="-110,-90 0,-90 0,90" fill="#1fa877"/>
+    <polygon points="110,-90 0,-90 0,90" fill="#137a4f"/>
+    <polygon points="-60,-170 0,-90 60,-170" fill="#a8f0d4"/>
+  </g>
+  <g transform="translate(585 350) scale(.48)">
+    <polygon points="-60,-170 60,-170 110,-90 0,90 -110,-90" fill="#ffd34d"/>
+    <polygon points="-110,-90 0,-90 0,90" fill="#f2b705"/>
+    <polygon points="110,-90 0,-90 0,90" fill="#c99500"/>
+    <polygon points="-60,-170 0,-90 60,-170" fill="#fff0bf"/>
+  </g>
+  <rect x="0" y="440" width="800" height="60" fill="#0a1320"/>
+</svg>

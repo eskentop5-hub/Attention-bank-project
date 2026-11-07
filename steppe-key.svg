@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0b86a6"/><stop offset="1" stop-color="#7fd6e6"/></linearGradient>
+    <linearGradient id="key" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ffd34d"/><stop offset="1" stop-color="#e0a100"/></linearGradient>
+  </defs>
+  <rect width="800" height="500" fill="url(#sky)"/>
+  <circle cx="590" cy="190" r="92" fill="#ffe08a" opacity=".9"/>
+  <g fill="#ffe08a" opacity=".35"><circle cx="590" cy="190" r="130"/></g>
+  <path d="M0 330 C140 290 260 300 400 320 S640 360 800 300 V500 H0Z" fill="#0d5d76"/>
+  <path d="M0 380 C160 350 300 360 450 385 S680 420 800 370 V500 H0Z" fill="#0a3f52"/>
+  <path d="M0 430 C200 410 380 420 520 440 S720 470 800 450 V500 H0Z" fill="#0e1a2b"/>
+  <g transform="translate(150 150) rotate(-18)">
+    <circle cx="80" cy="80" r="70" fill="url(#key)"/>
+    <circle cx="80" cy="80" r="30" fill="#0b86a6"/>
+    <rect x="140" y="64" width="300" height="32" rx="8" fill="url(#key)"/>
+    <rect x="360" y="96" width="26" height="54" rx="6" fill="url(#key)"/>
+    <rect x="404" y="96" width="26" height="38" rx="6" fill="url(#key)"/>
+  </g>
+</svg>

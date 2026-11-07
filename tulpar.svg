@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 500">
+  <defs>
+    <radialGradient id="bg" cx=".5" cy=".45" r=".75"><stop offset="0" stop-color="#127c98"/><stop offset="1" stop-color="#0e1a2b"/></radialGradient>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffe08a"/><stop offset="1" stop-color="#f2b705"/></linearGradient>
+  </defs>
+  <rect width="800" height="500" fill="url(#bg)"/>
+  <g fill="#fff" opacity=".5"><circle cx="90" cy="80" r="2.5"/><circle cx="700" cy="60" r="2"/><circle cx="640" cy="420" r="2.5"/><circle cx="150" cy="400" r="2"/><circle cx="380" cy="50" r="1.8"/></g>
+  <circle cx="400" cy="250" r="150" fill="none" stroke="#ffe08a" stroke-width="3" opacity=".5"/>
+  <g transform="translate(400 250)">
+    <g fill="url(#g)">
+      <path d="M-20 0 C-120 -30 -230 -110 -260 -170 C-200 -150 -120 -110 -20 -40Z"/>
+      <path d="M-20 10 C-130 -5 -240 -60 -280 -110 C-210 -100 -130 -70 -20 -20Z" opacity=".85"/>
+      <path d="M-20 20 C-120 25 -220 -10 -270 -45 C-200 -45 -120 -30 -20 0Z" opacity=".7"/>
+      <path d="M20 0 C120 -30 230 -110 260 -170 C200 -150 120 -110 20 -40Z"/>
+      <path d="M20 10 C130 -5 240 -60 280 -110 C210 -100 130 -70 20 -20Z" opacity=".85"/>
+      <path d="M20 20 C120 25 220 -10 270 -45 C200 -45 120 -30 20 0Z" opacity=".7"/>
+    </g>
+    <path d="M-34 70 L0 -70 L34 70 L0 40Z" fill="#fff"/>
+    <circle cx="0" cy="-80" r="12" fill="#fff"/>
+  </g>
+</svg>
