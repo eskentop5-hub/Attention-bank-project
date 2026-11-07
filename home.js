@@ -5,6 +5,7 @@ import { listTasksForUser, mySubmissions } from './campaigns.js';
 import { listRewards, rewardView } from './rewards.js';
 import { verifyLedger } from './ledger.js';
 import { FLAG_INFO, userTrust } from './verification.js';
+import { userStats } from './stats.js';
 
 const TX_KIND = {
   task_reward: 'reward',
@@ -118,6 +119,11 @@ export function home(user) {
       earned: one("SELECT COALESCE(SUM(amount),0) AS n FROM transactions WHERE user_id = ? AND amount > 0", fresh.id).n,
     },
     integrity: verifyLedger(fresh.id),
+    // Кратко для главной: вчера/позавчера, серия, челлендж (подробно — /api/me/stats)
+    pulse: (() => {
+      const s = userStats(fresh.id, 7);
+      return { today: s.today.earned, yesterday: s.yesterday.earned, dayBefore: s.dayBefore.earned, week: s.week, days: s.days, streak: s.streak, challenge: s.challenge };
+    })(),
   };
 }
 

@@ -47,5 +47,15 @@ export const config = {
     abToKzt: num('AB_TO_KZT', 10),
     dailySubmissionLimit: num('DAILY_SUBMISSION_LIMIT', 10),
   },
+  // Маскот: если задан ключ Anthropic, отвечает настоящий ИИ (Claude); иначе — встроенная база знаний
+  mascot: {
+    anthropicKey: env('ANTHROPIC_API_KEY', ''),
+    model: env('MASCOT_MODEL', 'claude-haiku-5-5'),
+    perHour: num('MASCOT_QUESTIONS_PER_HOUR', 20),
+  },
+  // Часовой пояс для «дней» в статистике и серии заходов (минуты от UTC). Казахстан: UTC+5 = 300
+  tzOffsetMin: num('TZ_OFFSET_MIN', 300),
+  // Ежедневный челлендж: сколько заданий в день (только прогресс и серия — баллы за него не начисляются)
+  dailyChallenge: num('DAILY_CHALLENGE_TASKS', 3),
   sessionDays: 30,
 };

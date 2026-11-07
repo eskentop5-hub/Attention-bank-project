@@ -11,6 +11,8 @@ import * as rewards from './services/rewards.js';
 import { listNotifications, unreadCount, markAllRead } from './services/notifications.js';
 import { createLinkCode, unlinkTelegram, handleUpdate, webhookSecretToken } from './telegram/bot.js';
 import { telegramEnabled } from './telegram/api.js';
+import { recordVisit, streak, userStats, dailyChallenge } from './services/stats.js';
+import * as mascot from './services/mascot.js';
 import { AUTO_APPROVE_SCORE, AUTO_REJECT_SCORE, FLAG_INFO } from './services/verification.js';
 
 const routes = [];
@@ -115,8 +117,16 @@ POST('/api/auth/logout', (ctx) => {
 
 GET('/api/me', (ctx) => {
   if (!ctx.user) return { user: null };
-  return { user: auth.publicUser(ctx.user), unread: unreadCount(ctx.user.id) };
+  // Отметка захода для серии 🔥 (один раз в день)
+  recordVisit(ctx.user.id);
+  return { user: auth.publicUser(ctx.user), unread: unreadCount(ctx.user.id), streak: streak(ctx.user.id) };
 });
+
+// Личная статистика: заработок по дням, вчера/позавчера, лучший день, одобрение, AB за час внимания
+GET('/api/me/stats', (ctx) => userStats(need(ctx).id, 14));
+
+// Маскот «Аби»: ИИ (если задан ANTHROPIC_API_KEY) или встроенная база знаний. Доступен и гостям.
+POST('/api/mascot/ask', async (ctx) => mascot.ask({ question: ctx.body.question, page: ctx.body.page, user: ctx.user, ip: ctx.ip }));
 
 // Обновление профиля. Баланс, роль, Telegram — НЕ меняются отсюда, даже если клиент их пришлёт.
 PUT('/api/me', (ctx) => {
@@ -124,7 +134,12 @@ PUT('/api/me', (ctx) => {
   const name = ctx.body.name !== undefined ? str(ctx.body.name, { field: 'Имя', min: 2, max: 80 }) : u.name;
   const interests = ctx.body.interests !== undefined ? cleanInterests(ctx.body.interests) : JSON.parse(u.interests);
   const notifyTelegram = ctx.body.notifyTelegram !== undefined ? (ctx.body.notifyTelegram ? 1 : 0) : u.notify_telegram;
-  run('UPDATE users SET name = ?, interests = ?, notify_telegram = ? WHERE id = ?', name, JSON.stringify(interests), notifyTelegram, u.id);
+  let avatar = u.avatar;
+  if (ctx.body.avatar !== undefined) {
+    if (ctx.body.avatar !== null && !/^a([1-9]|1[0-2])$/.test(String(ctx.body.avatar))) throw bad('Неизвестный аватар');
+    avatar = ctx.body.avatar;
+  }
+  run('UPDATE users SET name = ?, interests = ?, notify_telegram = ?, avatar = ? WHERE id = ?', name, JSON.stringify(interests), notifyTelegram, avatar, u.id);
   return { user: auth.publicUser(one('SELECT * FROM users WHERE id = ?', u.id)) };
 });
 

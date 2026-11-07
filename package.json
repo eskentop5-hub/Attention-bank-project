@@ -12,6 +12,6 @@
     "dev": "node --disable-warning=ExperimentalWarning --watch server/index.js",
     "build": "node scripts/build.mjs",
     "seed": "node --disable-warning=ExperimentalWarning server/seed-cli.js",
-    "test": "node --disable-warning=ExperimentalWarning --test test/flow.test.js"
+    "test": "node --disable-warning=ExperimentalWarning --test test/flow.test.js test/seed.test.js"
   }
 }

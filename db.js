@@ -21,6 +21,8 @@ const MIGRATIONS = [
   ['rewards', 'image_id', 'INTEGER'],
   ['rewards', 'cover', 'TEXT'],
   ['rewards', 'how_to_use', 'TEXT'],
+  ['rewards', 'platform', 'TEXT'],
+  ['users', 'avatar', 'TEXT'],
 ];
 for (const [table, column, ddl] of MIGRATIONS) {
   const cols = db.prepare(`PRAGMA table_info(${table})`).all();

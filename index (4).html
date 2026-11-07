@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Видео-тест — ATTENTION BANK</title>
+<meta name="theme-color" content="#060C14">
+<link rel="stylesheet" href="/play/play.css">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; min-height: 100vh; background: #060C14; color: #E8EEF5; font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; }
+  .wrap { max-width: 1060px; margin: 0 auto; padding: 22px 16px 50px; display: grid; grid-template-columns: 1fr 330px; gap: 20px; align-items: start; }
+  h1 { margin: 0 0 4px; font-size: 24px; }
+  .sub { color: #8FA3B8; margin: 0 0 14px; font-size: 14px; }
+  .frame { background: #000; border-radius: 18px; overflow: hidden; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06); display: grid; place-items: center; }
+  .frame.vertical { max-width: 380px; margin: 0 auto; }
+  video { display: block; width: 100%; height: auto; max-height: 76vh; background: #000; }
+  .meter { height: 10px; border-radius: 6px; background: rgba(255, 255, 255, 0.08); overflow: hidden; margin: 8px 0 4px; display: flex; }
+  .meter i { display: block; height: 100%; background: linear-gradient(90deg, #19B3D4, #F2B705); transition: width 0.3s; }
+  .card { background: rgba(14, 26, 43, 0.8); border: 1px solid rgba(255, 255, 255, 0.07); border-radius: 16px; padding: 18px; margin-bottom: 14px; }
+  .card h2 { margin: 0 0 8px; font-size: 16px; }
+  .big { font: 800 34px/1 system-ui, sans-serif; color: #F2B705; }
+  .row { display: flex; justify-content: space-between; font-size: 14px; color: #B9C6D6; padding: 4px 0; }
+  .row b { color: #E8EEF5; }
+  .ok { color: #3DD68C; font-weight: 700; }
+  textarea { background: #0A1422; color: #E8EEF5; border: 1px solid #22344D; }
+  button { cursor: pointer; border: 0; border-radius: 10px; padding: 10px 16px; font: 700 14px system-ui, sans-serif; background: #16243A; color: #E8EEF5; border: 1px solid #2A3B55; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 14px; flex-wrap: wrap; }
+  .tabs a { color: #B9C6D6; text-decoration: none; padding: 7px 12px; border-radius: 99px; border: 1px solid #22344D; font-size: 14px; }
+  .tabs a[aria-current='page'] { background: #19B3D4; color: #04111A; border-color: #19B3D4; font-weight: 700; }
+  .muted { color: #8FA3B8; font-size: 13px; }
+  @media (max-width: 860px) { .wrap { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="ab-strip"><b>Демо-продукт</b> Ролики созданы для демонстрации платформы. Студии — демонстрационные. <a href="/#/tasks">← Вернуться к заданию</a></div>
+<div class="wrap">
+  <main>
+    <nav class="tabs" id="tabs"></nav>
+    <h1 id="title"></h1>
+    <p class="sub" id="sub"></p>
+    <div class="frame" id="frame"><video id="v" controls playsinline preload="metadata"></video></div>
+    <p class="muted">Звука в роликах нет. Смотрите внимательно: в задании будет контрольный вопрос по содержанию видео.</p>
+  </main>
+  <aside>
+    <div class="card">
+      <h2>Просмотр</h2>
+      <div class="big" id="pct">0%</div>
+      <div class="meter" aria-hidden="true"><i id="bar" style="width:0"></i></div>
+      <div class="muted" id="state">Нажмите ▶, чтобы начать</div>
+      <div class="row"><span>Перемотки вперёд</span><b id="seeks">0</b></div>
+      <div class="row"><span>Паузы</span><b id="pauses">0</b></div>
+      <div class="row"><span>Скорость</span><b id="rate">1×</b></div>
+    </div>
+    <div class="card">
+      <h2>Итог для ответа</h2>
+      <p class="muted" style="margin-top:0">Считается только реально проигранная часть ролика: перемотка не засчитывается. Данные остаются в браузере.</p>
+      <div class="copy-box"><textarea id="report" readonly aria-label="Итог просмотра"></textarea><button id="copy" type="button">Скопировать</button></div>
+    </div>
+  </aside>
+</div>
+<script type="module" src="player.js"></script>
+</body>
+</html>

@@ -14,6 +14,7 @@ export const FLAG_INFO = {
   straight_lining: { label: 'Все оценки одинаковые', penalty: 15 },
   unverified_account: { label: 'Аккаунт не подтверждён через Telegram', penalty: 10 },
   low_trust: { label: 'Много отклонённых ответов в истории', penalty: 15 },
+  failed_attention_check: { label: 'Неверный ответ на контрольный вопрос', penalty: 45 },
 };
 
 const normalize = (s) => String(s).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
@@ -94,6 +95,9 @@ export function scoreSubmission({ campaign, questions, answers, startedAt, userI
     });
     if (dup) flags.push('duplicate_text');
   }
+
+  // Контрольные вопросы (например, «какого цвета чапан у всадника в видео?»)
+  if (questions.some((q) => q.type === 'choice' && q.correct && answers[q.id] !== undefined && answers[q.id] !== q.correct)) flags.push('failed_attention_check');
 
   const ratings = questions.filter((q) => q.type === 'rating').map((q) => answers[q.id]).filter(Boolean);
   if (ratings.length >= 3 && new Set(ratings).size === 1) flags.push('straight_lining');

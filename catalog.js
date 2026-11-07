@@ -4,6 +4,7 @@ export const CATEGORIES = [
   { id: 'game_feedback', label: 'Отзыв об игре', short: 'Game Feedback' },
   { id: 'app_testing', label: 'Тестирование приложения', short: 'App Testing' },
   { id: 'ux_research', label: 'UX-исследование', short: 'UX Research' },
+  { id: 'video_review', label: 'Видео-тест', short: 'Video Test' },
 ];
 
 export const INTERESTS = [

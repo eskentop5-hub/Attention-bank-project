@@ -7,6 +7,7 @@ import { REWARD_CATEGORIES, isRewardCategory } from '../catalog.js';
 import { postTransaction } from './ledger.js';
 import { notify } from './notifications.js';
 
+export const PLATFORMS = ['steam', 'epic', 'google_play', 'app_store', 'in_game', 'web'];
 const categoryLabel = (id) => REWARD_CATEGORIES.find((c) => c.id === id)?.label || id;
 
 export const imageUrl = (r) => (r.image_id ? `/api/images/${r.image_id}` : r.cover || `/img/rewards/cat-${r.category || 'game_access'}.svg`);
@@ -30,6 +31,7 @@ function view(r, balance = null) {
     company: r.company_name || 'ATTENTION BANK',
     demo: !!r.company_demo,
     imageUrl: imageUrl(r),
+    platform: r.platform || null,
   };
   if (balance !== null) {
     v.affordable = balance >= r.cost && r.stock > 0;
@@ -67,6 +69,7 @@ export function createReward(company, body) {
   const cost = int(body.cost, { field: 'Цена в AB', min: 1, max: 100000 });
   const stock = int(body.stock, { field: 'Количество', min: 1, max: 100000 });
   const category = isRewardCategory(body.category) ? body.category : 'game_access';
+  const platform = PLATFORMS.includes(body.platform) ? body.platform : null;
   let imageId = null;
   if (body.imageId != null && body.imageId !== '') {
     imageId = int(body.imageId, { field: 'Картинка', min: 1 });
@@ -74,8 +77,8 @@ export function createReward(company, body) {
     if (!img || img.owner_id !== company.id) throw bad('Картинка не найдена — загрузите её ещё раз');
   }
   const r = run(
-    'INSERT INTO rewards (company_id, title, description, how_to_use, cost, stock, category, image_id, cover) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    company.id, title, description, howToUse, cost, stock, category, imageId, body.cover || null
+    'INSERT INTO rewards (company_id, title, description, how_to_use, cost, stock, category, image_id, cover, platform) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    company.id, title, description, howToUse, cost, stock, category, imageId, body.cover || null, platform
   );
   return one(`${SELECT} WHERE r.id = ?`, Number(r.lastInsertRowid));
 }

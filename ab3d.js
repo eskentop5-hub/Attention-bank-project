@@ -79,6 +79,13 @@ const MAT = {
   silver: { c: hex('#D9E1E8'), metal: 1, rough: 0.18 },
   ribbonSky: { c: hex('#1597B8'), metal: 0, rough: 0.75 },
   ribbonCoral: { c: hex('#E5573C'), metal: 0, rough: 0.75 },
+  black: { c: hex('#0C1118'), metal: 0.1, rough: 0.25 },
+  white: { c: hex('#F1F4F8'), metal: 0, rough: 0.3 },
+  screen: { c: hex('#0A2C3D'), metal: 0.3, rough: 0.06 },
+  coral: { c: hex('#FF6A4D'), metal: 0, rough: 0.3 },
+  mint: { c: hex('#33D49B'), metal: 0, rough: 0.3 },
+  violet: { c: hex('#7B6CF6'), metal: 0, rough: 0.3 },
+  wood: { c: hex('#6B4426'), metal: 0, rough: 0.6 },
 };
 
 // ---------------- Геометрия ----------------
@@ -131,12 +138,24 @@ class Geo {
       this.tri(pav[i], pav[j], tip, mt);
     }
   }
-  torus(m, mt, { R = 0.6, r = 0.12, su = 96, sv = 28 } = {}) {
+  sphere(m, mt, { r = 0.5, su = 32, sv = 18 } = {}) {
+    const P = (u, v) => [r * Math.sin(v) * Math.cos(u), r * Math.cos(v), r * Math.sin(v) * Math.sin(u)];
+    const N = (u, v) => [Math.sin(v) * Math.cos(u), Math.cos(v), Math.sin(v) * Math.sin(u)];
+    for (let i = 0; i < su; i++)
+      for (let j = 0; j < sv; j++) {
+        const u0 = (i / su) * 2 * Math.PI, u1 = ((i + 1) / su) * 2 * Math.PI, v0 = (j / sv) * Math.PI, v1 = ((j + 1) / sv) * Math.PI;
+        const a = tp(m, P(u0, v0)), b = tp(m, P(u1, v0)), c = tp(m, P(u1, v1)), d = tp(m, P(u0, v1));
+        const na = tn(m, N(u0, v0)), nb = tn(m, N(u1, v0)), nc = tn(m, N(u1, v1)), nd = tn(m, N(u0, v1));
+        this.tri(a, c, b, mt, na, nc, nb);
+        this.tri(a, d, c, mt, na, nd, nc);
+      }
+  }
+  torus(m, mt, { R = 0.6, r = 0.12, su = 96, sv = 28, arc = 1 } = {}) {
     const P = (u, v) => [(R + r * Math.cos(v)) * Math.cos(u), (R + r * Math.cos(v)) * Math.sin(u), r * Math.sin(v)];
     const N = (u, v) => [Math.cos(v) * Math.cos(u), Math.cos(v) * Math.sin(u), Math.sin(v)];
     for (let i = 0; i < su; i++)
       for (let j = 0; j < sv; j++) {
-        const u0 = (i / su) * 2 * Math.PI, u1 = ((i + 1) / su) * 2 * Math.PI, v0 = (j / sv) * 2 * Math.PI, v1 = ((j + 1) / sv) * 2 * Math.PI;
+        const u0 = (i / su) * 2 * Math.PI * arc, u1 = ((i + 1) / su) * 2 * Math.PI * arc, v0 = (j / sv) * 2 * Math.PI, v1 = ((j + 1) / sv) * 2 * Math.PI;
         const a = tp(m, P(u0, v0)), b = tp(m, P(u1, v0)), c = tp(m, P(u1, v1)), d = tp(m, P(u0, v1));
         const na = tn(m, N(u0, v0)), nb = tn(m, N(u1, v0)), nc = tn(m, N(u1, v1)), nd = tn(m, N(u0, v1));
         this.tri(a, b, c, mt, na, nb, nc);
@@ -261,6 +280,96 @@ export const MODELS = {
     g.torus(M.trans(0, 0, 0.0), MAT.goldPale, { R: 0.47, r: 0.045, su: 72, sv: 14 });
     g.star(M.trans(0, 0, 0.06), MAT.cream, { r: 0.32, inner: 0.14, h: 0.07 });
     return { geo: g, size: 1.3 };
+  },
+  // Коробка ПК-игры с диском (ключи Steam / Epic): цвет обложки зависит от платформы
+  game_box(v = 0) {
+    const g = new Geo();
+    const epic = v % 2 === 1;
+    g.bevelBox(M.ident(), epic ? MAT.black : MAT.navyPlastic, 1.0, 1.3, 0.16, 0.03);
+    g.bevelBox(M.trans(0, -0.06, 0.082), epic ? MAT.white : MAT.skyPlastic, 0.86, 0.98, 0.012, 0.006);
+    g.bevelBox(M.trans(0, 0.53, 0.082), MAT.gold, 0.86, 0.1, 0.014, 0.006);
+    g.crystal(M.chain(M.trans(0, -0.05, 0.12), M.rotX(Math.PI / 2), M.scale(0.32)), MAT.gemGold, { sides: 12 });
+    g.cylinder(M.chain(M.trans(0.42, 0.05, -0.02), M.rotY(0.0)), MAT.silver, { r: 0.46, h: 0.02, seg: 64, capMat: MAT.silver });
+    g.torus(M.trans(0.42, 0.05, -0.0), MAT.goldPale, { R: 0.13, r: 0.025, su: 40, sv: 10 });
+    return { geo: g, size: 1.15 };
+  },
+  // Смартфон с сеткой иконок (ранний доступ в Google Play / App Store)
+  phone(v = 0) {
+    const g = new Geo();
+    g.bevelBox(M.ident(), v % 2 ? MAT.white : MAT.black, 0.78, 1.52, 0.09, 0.04);
+    g.bevelBox(M.trans(0, 0, 0.047), MAT.screen, 0.7, 1.42, 0.006, 0.003);
+    const cols = [MAT.gemGold, MAT.coral, MAT.mint, MAT.skyPlastic, MAT.violet, MAT.gemSky];
+    for (let i = 0; i < 6; i++) g.bevelBox(M.trans(-0.2 + (i % 3) * 0.2, 0.42 - Math.floor(i / 3) * 0.22, 0.056), cols[(i + v) % 6], 0.14, 0.14, 0.02, 0.02);
+    g.crystal(M.chain(M.trans(0, -0.2, 0.1), M.rotX(Math.PI / 2), M.scale(0.34)), MAT.gemGold, { sides: 14 });
+    g.cylinder(M.trans(0, 0.66, 0.05), MAT.black, { r: 0.025, h: 0.01, seg: 20 });
+    return { geo: g, size: 1.15 };
+  },
+  // Подкова на удачу — скин коня «Тулпар»
+  horseshoe() {
+    const g = new Geo();
+    g.torus(M.chain(M.rotZ(-Math.PI * 0.12 + Math.PI)), MAT.silver, { R: 0.55, r: 0.13, su: 72, sv: 22, arc: 0.62 });
+    for (let i = 0; i < 6; i++) {
+      const a = Math.PI + (-Math.PI * 0.12) + (i + 0.5) * ((Math.PI * 2 * 0.62) / 6);
+      g.crystal(M.chain(M.trans(Math.cos(a) * 0.55, Math.sin(a) * 0.55, 0.12), M.rotX(Math.PI / 2), M.scale(0.1)), MAT.gemSky, { sides: 8 });
+    }
+    g.crystal(M.chain(M.trans(0, 0.15, 0), M.rotX(0.3), M.scale(0.42)), MAT.gemGold, { sides: 14 });
+    return { geo: g, size: 1.05 };
+  },
+  // Облачко чата с тремя точками — закрытый чат с разработчиками
+  chat() {
+    const g = new Geo();
+    g.bevelBox(M.ident(), MAT.skyPlastic, 1.5, 0.95, 0.3, 0.14);
+    g.bevelBox(M.chain(M.trans(-0.42, -0.55, 0), M.rotZ(0.7)), MAT.skyPlastic, 0.3, 0.3, 0.3, 0.08);
+    for (let i = 0; i < 3; i++) g.sphere(M.trans(-0.36 + i * 0.36, 0, 0.17), MAT.white, { r: 0.1, su: 20, sv: 12 });
+    return { geo: g, size: 1.15 };
+  },
+  // Кинохлопушка — имя в титрах
+  clapper() {
+    const g = new Geo();
+    g.bevelBox(M.ident(), MAT.black, 1.4, 0.95, 0.1, 0.02);
+    for (let i = 0; i < 5; i++) g.bevelBox(M.trans(-0.56 + i * 0.28, 0.56, 0), i % 2 ? MAT.white : MAT.black, 0.28, 0.17, 0.1, 0.01);
+    g.bevelBox(M.chain(M.trans(-0.08, 0.84, 0), M.rotZ(0.22)), MAT.black, 1.45, 0.17, 0.1, 0.02);
+    for (let i = 0; i < 5; i++) g.bevelBox(M.chain(M.trans(-0.08, 0.84, 0.055), M.rotZ(0.22), M.trans(-0.56 + i * 0.28, 0, 0)), i % 2 ? MAT.gold : MAT.white, 0.16, 0.13, 0.01, 0.004);
+    g.bevelBox(M.trans(0, -0.05, 0.055), MAT.white, 1.1, 0.03, 0.01, 0.003);
+    g.bevelBox(M.trans(0, -0.25, 0.055), MAT.white, 1.1, 0.03, 0.01, 0.003);
+    g.star(M.trans(0.45, 0.2, 0.055), MAT.gold, { r: 0.13, inner: 0.055, h: 0.04 });
+    return { geo: g, size: 1.2 };
+  },
+  // Монета AB Points с выпуклым знаком (два кольца)
+  coin() {
+    const g = new Geo();
+    g.cylinder(M.ident(), MAT.gold, { r: 0.62, h: 0.14, seg: 80 });
+    g.torus(M.trans(0, 0, 0), MAT.goldPale, { R: 0.6, r: 0.05, su: 80, sv: 12 });
+    g.torus(M.trans(-0.13, 0, 0.075), MAT.skyMetal, { R: 0.22, r: 0.045, su: 48, sv: 12 });
+    g.torus(M.trans(0.13, 0, 0.075), MAT.goldPale, { R: 0.22, r: 0.045, su: 48, sv: 12 });
+    return { geo: g, size: 1.2 };
+  },
+  // Геймпад
+  gamepad() {
+    const g = new Geo();
+    g.bevelBox(M.ident(), MAT.navyPlastic, 1.1, 0.62, 0.3, 0.13);
+    g.sphere(M.chain(M.trans(-0.55, -0.15, 0), M.scale(1)), MAT.navyPlastic, { r: 0.33 });
+    g.sphere(M.chain(M.trans(0.55, -0.15, 0), M.scale(1)), MAT.navyPlastic, { r: 0.33 });
+    g.bevelBox(M.trans(-0.5, 0.02, 0.16), MAT.black, 0.3, 0.09, 0.06, 0.02);
+    g.bevelBox(M.trans(-0.5, 0.02, 0.16), MAT.black, 0.09, 0.3, 0.06, 0.02);
+    const btn = [[0.5, 0.13, MAT.mint], [0.62, 0.02, MAT.coral], [0.38, 0.02, MAT.skyPlastic], [0.5, -0.09, MAT.gemGold]];
+    for (const [x, y, mt] of btn) g.sphere(M.trans(x, y, 0.16), mt, { r: 0.055, su: 18, sv: 10 });
+    g.cylinder(M.trans(-0.2, -0.17, 0.15), MAT.black, { r: 0.1, h: 0.08, seg: 28 });
+    g.cylinder(M.trans(0.2, -0.17, 0.15), MAT.black, { r: 0.1, h: 0.08, seg: 28 });
+    g.bevelBox(M.trans(0, 0.12, 0.16), MAT.gold, 0.16, 0.05, 0.02, 0.01);
+    return { geo: g, size: 1.3 };
+  },
+  // Кубок
+  trophy() {
+    const g = new Geo();
+    g.cylinder(M.chain(M.trans(0, 0.3, 0), M.rotX(Math.PI / 2)), MAT.gold, { r: 0.42, h: 0.6, seg: 64 });
+    g.torus(M.chain(M.trans(-0.48, 0.32, 0), M.rotY(Math.PI / 2)), MAT.gold, { R: 0.16, r: 0.04, su: 40, sv: 10 });
+    g.torus(M.chain(M.trans(0.48, 0.32, 0), M.rotY(Math.PI / 2)), MAT.gold, { R: 0.16, r: 0.04, su: 40, sv: 10 });
+    g.cylinder(M.chain(M.trans(0, -0.18, 0), M.rotX(Math.PI / 2)), MAT.goldPale, { r: 0.08, h: 0.38, seg: 24 });
+    g.bevelBox(M.trans(0, -0.45, 0), MAT.wood, 0.7, 0.18, 0.45, 0.03);
+    g.bevelBox(M.trans(0, -0.45, 0.228), MAT.goldPale, 0.4, 0.08, 0.008, 0.003);
+    g.star(M.trans(0, 0.32, 0.42), MAT.cream, { r: 0.17, inner: 0.07, h: 0.05 });
+    return { geo: g, size: 1.2 };
   },
   shard() {
     const g = new Geo();
@@ -759,4 +868,16 @@ export function pageStageFor(canvas) {
 }
 
 export const modelForCategory = (cat) => (['game_access', 'in_game', 'subscription', 'recognition'].includes(cat) ? cat : 'in_game');
+// Уникальная модель для каждой награды: по платформе, категории и смыслу
+export function modelForReward(r) {
+  const t = String(r.title || '').toLowerCase();
+  if (r.platform === 'steam') return ['game_box', 0];
+  if (r.platform === 'epic') return ['game_box', 1];
+  if (r.platform === 'google_play') return ['phone', 0];
+  if (r.platform === 'app_store') return ['phone', 1];
+  if (/тулпар|скин|кон[ья]/.test(t)) return ['horseshoe', 0];
+  if (/чат/.test(t)) return ['chat', 0];
+  if (/титр/.test(t)) return ['clapper', 0];
+  return [modelForCategory(r.category), r.id || 0];
+}
 export const reducedMotion = REDUCED;

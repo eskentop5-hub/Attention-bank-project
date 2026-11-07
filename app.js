@@ -20,7 +20,30 @@ const MIME = {
   '.png': 'image/png',
   '.ico': 'image/x-icon',
   '.txt': 'text/plain; charset=utf-8',
+  '.mp4': 'video/mp4',
+  '.jpg': 'image/jpeg',
+  '.vtt': 'text/vtt; charset=utf-8',
 };
+
+// Отдаёт буфер с поддержкой Range (нужно для перемотки видео и для Safari/iOS)
+function sendBuffer(req, res, buf, headers) {
+  const range = /^bytes=(\d*)-(\d*)$/.exec(req.headers.range || '');
+  if (range && (range[1] || range[2])) {
+    let start = range[1] ? Number(range[1]) : buf.length - Number(range[2]);
+    let end = range[1] && range[2] ? Number(range[2]) : buf.length - 1;
+    start = Math.max(0, start);
+    end = Math.min(end, buf.length - 1);
+    if (start > end) {
+      res.writeHead(416, { 'Content-Range': `bytes */${buf.length}` });
+      return res.end();
+    }
+    res.writeHead(206, { ...headers, 'Accept-Ranges': 'bytes', 'Content-Range': `bytes ${start}-${end}/${buf.length}`, 'Content-Length': end - start + 1 });
+    return res.end(req.method === 'HEAD' ? undefined : buf.subarray(start, end + 1));
+  }
+  res.writeHead(200, { ...headers, 'Accept-Ranges': 'bytes', 'Content-Length': buf.length });
+  res.end(req.method === 'HEAD' ? undefined : buf);
+}
+const embeddedCache = new Map();
 
 const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
@@ -66,11 +89,13 @@ function serveStatic(req, res, pathname) {
     file = path.join(PUBLIC, 'index.html'); // SPA fallback
   }
   const ext = path.extname(file);
-  res.writeHead(200, {
+  const headers = {
     'Content-Type': MIME[ext] || 'application/octet-stream',
     'Cache-Control': ext === '.html' || file.endsWith('sw.js') ? 'no-cache' : 'public, max-age=300',
     ...SECURITY_HEADERS,
-  });
+  };
+  if (ext === '.mp4') return sendBuffer(req, res, fs.readFileSync(file), headers);
+  res.writeHead(200, headers);
   if (req.method === 'HEAD') return res.end();
   fs.createReadStream(file).pipe(res);
 }
@@ -83,12 +108,12 @@ function serveEmbedded(req, res, pathname) {
     key = 'public/index.html';
   }
   const ext = path.extname(key);
-  res.writeHead(200, {
+  if (!embeddedCache.has(key)) embeddedCache.set(key, Buffer.from(ASSETS[key], 'base64'));
+  sendBuffer(req, res, embeddedCache.get(key), {
     'Content-Type': MIME[ext] || 'application/octet-stream',
     'Cache-Control': ext === '.html' || key.endsWith('sw.js') ? 'no-cache' : 'public, max-age=300',
     ...SECURITY_HEADERS,
   });
-  res.end(req.method === 'HEAD' ? undefined : Buffer.from(ASSETS[key], 'base64'));
 }
 
 async function handle(req, res) {

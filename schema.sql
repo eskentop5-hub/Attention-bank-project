@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS users (
   notify_telegram      INTEGER NOT NULL DEFAULT 1,  -- участник сам решает, получать ли сообщения
   goal_reward_id       INTEGER,                     -- «Моя цель» в каталоге наград
   is_demo              INTEGER NOT NULL DEFAULT 0,  -- демонстрационные аккаунты помечаются в интерфейсе
+  avatar               TEXT,                        -- id встроенного аватара (a1…a12)
   consent_at           TEXT,
   created_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
@@ -111,6 +112,7 @@ CREATE TABLE IF NOT EXISTS rewards (
   image_id    INTEGER,                 -- картинка, загруженная компанией
   cover       TEXT,                    -- встроенная обложка (для демо-наград)
   how_to_use  TEXT,                    -- как воспользоваться наградой
+  platform    TEXT,                    -- где активируется: steam | epic | google_play | app_store | in_game | web
   created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
@@ -153,3 +155,10 @@ CREATE INDEX IF NOT EXISTS idx_asg_campaign ON assignments(campaign_id, status);
 CREATE INDEX IF NOT EXISTS idx_asg_user ON assignments(user_id);
 CREATE INDEX IF NOT EXISTS idx_notif_user ON notifications(user_id, id);
 CREATE INDEX IF NOT EXISTS idx_campaign_status ON campaigns(status);
+
+-- Дни, когда участник заходил на сайт (для серии заходов 🔥). Один ряд на день.
+CREATE TABLE IF NOT EXISTS user_visits (
+  user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  day      TEXT NOT NULL,              -- YYYY-MM-DD в часовом поясе платформы
+  PRIMARY KEY (user_id, day)
+);

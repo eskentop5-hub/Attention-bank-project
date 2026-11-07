@@ -73,6 +73,7 @@ export function publicUser(u) {
     goalRewardId: u.goal_reward_id ?? null,
     notifyTelegram: !!u.notify_telegram,
     isDemo: !!u.is_demo,
+    avatar: u.avatar || null,
     consentAt: u.consent_at,
     telegram: u.telegram_chat_id
       ? { linked: true, username: u.telegram_username, verifiedAt: u.telegram_verified_at }

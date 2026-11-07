@@ -33,6 +33,12 @@ function cleanQuestions(raw) {
         .filter(Boolean);
       if (opts.length < 2) throw bad(`Вопрос ${i + 1}: нужно минимум 2 варианта ответа`);
       out.options = [...new Set(opts)].slice(0, 10);
+      // Контрольный вопрос: компания указывает правильный вариант (участнику он не показывается)
+      const correct = q.correct != null ? String(q.correct).trim() : '';
+      if (correct) {
+        if (!out.options.includes(correct)) throw bad(`Вопрос ${i + 1}: правильный ответ должен совпадать с одним из вариантов`);
+        out.correct = correct;
+      }
     }
     return out;
   });
@@ -170,7 +176,8 @@ export function campaignPublic(c, userId = null) {
     status: c.status,
     company: company?.company_name || company?.name,
     companyDemo: !!company?.is_demo,
-    questions: parseJson(c.questions, []),
+    // Участнику правильные ответы контрольных вопросов не отдаются
+    questions: parseJson(c.questions, []).map((q) => (userId != null && userId !== c.company_id ? (({ correct, ...rest }) => ({ ...rest, check: !!correct }))(q) : q)),
     createdAt: c.created_at,
     my: mine ? assignmentView(mine) : null,
   };

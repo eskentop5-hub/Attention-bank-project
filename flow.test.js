@@ -432,3 +432,79 @@ test('v2: публичный каталог для лендинга без вх�
   assert.ok(Array.isArray(r.rewards) && r.rewards.length > 0);
   assert.ok(r.rewards.every((x) => x.stock > 0));
 });
+
+test('v5: контрольный вопрос — правильный ответ скрыт от участника, ошибка даёт флаг', async () => {
+  const body = {
+    title: 'Видео-тест: трейлер',
+    description: 'Посмотрите трейлер целиком и ответьте на контрольный вопрос по видео.',
+    category: 'video_review',
+    reward: 10,
+    maxParticipants: 5,
+    minSeconds: 0,
+    questions: [
+      { type: 'choice', label: 'Какое слово было в ролике?', options: ['А', 'Б', 'В'], correct: 'Б' },
+      { type: 'text', label: 'Что запомнилось?', minLength: 10 },
+    ],
+  };
+  let r = await company('POST', '/api/company/campaigns', { ...body, questions: [{ ...body.questions[0], correct: 'Г' }, body.questions[1]] });
+  assert.equal(r.status, 400, 'правильный ответ должен быть среди вариантов');
+  r = await company('POST', '/api/company/campaigns', body);
+  assert.equal(r.status, 200);
+  const cid = r.data.campaign.id;
+  assert.equal(r.data.campaign.questions[0].correct, 'Б', 'компания видит правильный ответ');
+
+  const u3 = client();
+  await u3('POST', '/api/auth/register', { email: 'u5@test.kz', password: 'password1', name: 'Ерлан', consent: true, ageConfirmed: true });
+  r = await u3('GET', `/api/tasks/${cid}`);
+  assert.equal(r.data.task.questions[0].correct, undefined, 'участник не видит правильный ответ');
+  assert.equal(r.data.task.questions[0].check, true);
+  await u3('POST', `/api/tasks/${cid}/start`, {});
+  r = await u3('POST', `/api/tasks/${cid}/submit`, { answers: { q1: 'А', q2: 'Запомнилась ночная сцена со звёздами' } });
+  assert.equal(r.status, 200);
+  assert.ok(r.data.flags.includes('failed_attention_check'));
+});
+
+test('v5: статистика по дням, серия заходов, аватар', async () => {
+  let r = await user('GET', '/api/me');
+  assert.equal(r.data.streak.current, 1, 'первый заход — серия 1');
+  assert.equal(r.data.streak.today, true);
+  r = await user('GET', '/api/me');
+  assert.equal(r.data.streak.current, 1, 'повторный заход в тот же день не увеличивает серию');
+
+  r = await user('GET', '/api/me/stats');
+  assert.equal(r.status, 200);
+  assert.equal(r.data.days.length, 14);
+  const sum = r.data.days.reduce((s, d) => s + d.earned, 0);
+  assert.equal(r.data.today.earned, sum, 'всё заработано сегодня');
+  assert.ok(r.data.totalEarned >= r.data.today.earned);
+  assert.ok(r.data.challenge.goal > 0);
+
+  r = await user('PUT', '/api/me', { avatar: 'a7' });
+  assert.equal(r.data.user.avatar, 'a7');
+  r = await user('PUT', '/api/me', { avatar: '<script>' });
+  assert.equal(r.status, 400);
+
+  r = await user('GET', '/api/home');
+  assert.ok(r.data.pulse && r.data.pulse.days.length === 7 && r.data.pulse.streak.current === 1);
+});
+
+test('v5: маскот отвечает из базы знаний без ключа ИИ и не обещает деньги', async () => {
+  let r = await user('POST', '/api/mascot/ask', { question: 'Можно вывести AB Points в тенге?' });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.source, 'faq');
+  assert.match(r.data.answer, /не деньги/);
+  r = await user('POST', '/api/mascot/ask', { question: 'а есть kaspi?' });
+  assert.match(r.data.answer, /Скоро/);
+  r = await user('POST', '/api/mascot/ask', { question: '' });
+  assert.equal(r.status, 400);
+});
+
+test('v5: видео отдаётся частями (Range) для перемотки и iOS', async () => {
+  const fs = await import('node:fs');
+  const exists = fs.existsSync(new URL('../public/play/video/steppe-runner-trailer.mp4', import.meta.url));
+  if (!exists) return;
+  const res = await fetch(`${base}/play/video/steppe-runner-trailer.mp4`, { headers: { Range: 'bytes=0-99' } });
+  assert.equal(res.status, 206);
+  assert.equal((await res.arrayBuffer()).byteLength, 100);
+  assert.match(res.headers.get('content-range'), /^bytes 0-99\//);
+});
