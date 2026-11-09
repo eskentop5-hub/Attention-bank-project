@@ -1677,9 +1677,9 @@ function userFromToken(token) {
   return row || null;
 }
 function sessionCookie(token, expires) {
-  const secure = config.publicUrl.startsWith("https://") ? "; Secure" : "";
-  if (!token) return `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`;
-  return `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Expires=${new Date(expires).toUTCString()}${secure}`;
+  const attrs = config.publicUrl.startsWith("https://") ? "SameSite=None; Secure; Partitioned" : "SameSite=Lax";
+  if (!token) return `${COOKIE}=; Path=/; HttpOnly; ${attrs}; Max-Age=0`;
+  return `${COOKIE}=${token}; Path=/; HttpOnly; ${attrs}; Expires=${new Date(expires).toUTCString()}`;
 }
 function checkLoginRate(key2) {
   const t = Date.now();
@@ -2807,9 +2807,8 @@ function sendBuffer(req, res, buf, headers) {
 var embeddedCache = /* @__PURE__ */ new Map();
 var SECURITY_HEADERS = {
   "X-Content-Type-Options": "nosniff",
-  "X-Frame-Options": "DENY",
   "Referrer-Policy": "strict-origin-when-cross-origin",
-  "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+  "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; frame-ancestors 'self' https://web.telegram.org https://*.telegram.org; base-uri 'self'; form-action 'self'"
 };
 function parseCookies(header = "") {
   return Object.fromEntries(

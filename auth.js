@@ -43,9 +43,11 @@ export function userFromToken(token) {
 }
 
 export function sessionCookie(token, expires) {
-  const secure = config.publicUrl.startsWith('https://') ? '; Secure' : '';
-  if (!token) return `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`;
-  return `${COOKIE}=${token}; Path=/; HttpOnly; SameSite=Lax; Expires=${new Date(expires).toUTCString()}${secure}`;
+  // По HTTPS cookie работает и внутри Telegram Web (сайт открыт во фрейме web.telegram.org).
+  // Защита от CSRF при этом остаётся: сервер принимает только JSON и проверяет Origin.
+  const attrs = config.publicUrl.startsWith('https://') ? 'SameSite=None; Secure; Partitioned' : 'SameSite=Lax';
+  if (!token) return `${COOKIE}=; Path=/; HttpOnly; ${attrs}; Max-Age=0`;
+  return `${COOKIE}=${token}; Path=/; HttpOnly; ${attrs}; Expires=${new Date(expires).toUTCString()}`;
 }
 
 // Простая защита от перебора паролей
