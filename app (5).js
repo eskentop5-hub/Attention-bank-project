@@ -233,7 +233,7 @@ function navItems() {
       ['#/company', 'Обзор', I.chart],
       ['#/company/new', 'Создать', I.plus],
       ['#/company/rewards', 'Награды', I.gift],
-      ['#/budget', 'Бюджет', I.wallet],
+      ['#/company/revenue', 'Выручка', I.wallet],
       ['#/profile', 'Профиль', I.user],
     ];
   return [];
@@ -324,6 +324,8 @@ const routes = [
   ['/company/campaigns/:id', viewCampaign, { role: 'company' }],
   ['/company/campaigns/:id/edit', (ctx) => viewCampaignForm(ctx), { role: 'company' }],
   ['/company/rewards', viewCompanyRewards, { role: 'company' }],
+  ['/company/revenue', X.viewRevenue, { role: 'company' }],
+  ['/economy', X.viewEconomy, {}],
   ['/budget', viewActivity, { role: 'company' }],
 ];
 const home = () => (state.me?.role === 'company' ? '#/company' : '#/home');
@@ -2015,7 +2017,7 @@ function desktopModal() {
 
 // ---------- Запуск ----------
 async function boot() {
-  X.setup({ api, esc, fmt, plural, initials, toast, state, store, enhance: () => enhance(app), get app() { return app; }, I });
+  X.setup({ api, esc, fmt, plural, initials, toast, state, store, fmtTime, renderChrome, enhance: () => enhance(app), get app() { return app; }, I });
   try {
     state.meta = await api('/api/meta');
     await refreshMe();

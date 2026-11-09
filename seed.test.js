@@ -16,6 +16,10 @@ test('seed: демо-данные, история по дням, видео-за
   const { verifyAllLedgers } = await import('../server/services/ledger.js');
   const { userStats } = await import('../server/services/stats.js');
   assert.equal(verifyAllLedgers().ok, true, 'баланс = сумма транзакций у всех');
+  const { treasury } = await import('../server/services/economy.js');
+  const t = treasury();
+  assert.equal(t.ok, true, 'демо-экономика полностью обеспечена пополнениями');
+  assert.ok(t.flows.sellerRevenue > 0, 'демо-студия получила выручку за проданные награды');
   const demo = one("SELECT id FROM users WHERE email = 'demo@attention.bank'");
   const s = userStats(demo.id);
   assert.equal(s.yesterday.earned + s.dayBefore.earned, 150, 'демо-заработок разложен на вчера и позавчера');

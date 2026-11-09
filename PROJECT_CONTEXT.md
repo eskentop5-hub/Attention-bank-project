@@ -234,6 +234,12 @@ attention-bank/
 - Фирменные элементы: строка обмена `≈ 15 мин ⇄ +50 AB` в заданиях, золотая полоса прогресса к цели, штамп «Подтверждено». Тени почти не используются. Анимации: заполнение полосы цели и штамп; учитывается `prefers-reduced-motion`.
 - Адаптив проверен на 360 / 390 / 430 / 768 / 1024 / 1440 / 1920 px. На мобильных — нижняя панель вкладок, полка наград с горизонтальной прокруткой.
 
+### v6: экономика (`server/services/economy.js`)
+- `settleSale` вызывается внутри `redeem`: продавцу `reward_sale` (cost − fee), платформе `platform_fee`; в `redemptions` пишутся `seller_net`, `seller_fee`.
+- `platformBonus`: бонусы участникам платятся со счёта платформы (`bonus_paid` / `bonus`), без эмиссии.
+- `requestPayout` → `POST /api/company/payouts` (idempotent): таблица `payouts`, транзакция `payout`, курс `AB_TO_KZT`, минимум `PAYOUT_MIN_AB`; статус `requested` (перевода денег нет — нужен платёжный шлюз/договор).
+- `sellerRevenue` → `GET /api/company/revenue`; `treasury` → `GET /api/economy` (публично, без персональных данных). Инвариант: Σ users.balance + Σ campaigns.reserved = Σ deposit − Σ payout.
+
 ### v5: новые серверные части
 - `server/services/stats.js`: `recordVisit` (таблица `user_visits`, отмечается в `GET /api/me`), `streak`, `dailyChallenge`, `userStats` → `GET /api/me/stats`; краткая версия в `/api/home` → `pulse`. Дни считаются в `TZ_OFFSET_MIN`.
 - `server/services/mascot.js`: `POST /api/mascot/ask` (доступен гостям). С `ANTHROPIC_API_KEY` — Claude (`MASCOT_MODEL`), иначе FAQ; ответ `{ answer, source: 'ai'|'faq' }`; лимит `MASCOT_QUESTIONS_PER_HOUR`.
@@ -260,7 +266,7 @@ attention-bank/
 
 ---
 
-## 9. Тесты (`npm test`, 24 штуки, все проходят; test/seed.test.js проверяет демо-данные)
+## 9. Тесты (`npm test`, 25 штук, все проходят; test/seed.test.js проверяет демо-данные)
 Регистрация и запрет смены баланса/роли; резерв бюджета; валидация ответов; дубликаты; Telegram (код, бонус, повтор кода, 1 Telegram = 1 аккаунт, /balance); одобрение → транзакция → сообщение «+50 AB Points / New balance»; награды и запрет ухода в минус; возврат при закрытии; CSRF, webhook без секрета, обнаружение подмены баланса; идемпотентность (повтор пополнения, двойной клик «Одобрить», повтор обмена возвращает тот же код, 422 при чужом ключе); редактирование кампании (резерв и возврат, запрет смены награды, чужая кампания 403); ссылка-доказательство; блокировка вопросов; загрузка картинок (сигнатура, запрет SVG, роли, чужая картинка); цель/главная/каталог; активность и выгрузка; отключение пополнения в продакшене; публичный каталог.
 
 ---

@@ -64,27 +64,31 @@ const hex = (h) => [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 1
 
 // Материалы: цвет (sRGB), металличность, шероховатость
 const MAT = {
-  gold: { c: hex('#F5B800'), metal: 1, rough: 0.2 },
-  goldPale: { c: hex('#FFD86A'), metal: 1, rough: 0.28 },
-  skyMetal: { c: hex('#1FB8D8'), metal: 0.85, rough: 0.22 },
-  gemSky: { c: hex('#3FD8F2'), metal: 0.35, rough: 0.05 },
-  gemMint: { c: hex('#3CCF9A'), metal: 0.35, rough: 0.05 },
+  // Палитра советского космического плаката: солнечно-жёлтый, красно-оранжевый, кремовый, бирюза
+  gold: { c: hex('#F5C21B'), metal: 1, rough: 0.22 },
+  goldPale: { c: hex('#FFDD6E'), metal: 1, rough: 0.3 },
+  skyMetal: { c: hex('#3E9C9E'), metal: 0.85, rough: 0.25 },
+  gemSky: { c: hex('#7FD3CF'), metal: 0.35, rough: 0.05 },
+  gemMint: { c: hex('#9AD88F'), metal: 0.35, rough: 0.05 },
   gemGold: { c: hex('#FFC21A'), metal: 0.45, rough: 0.05 },
-  gemCoral: { c: hex('#FF7A5C'), metal: 0.35, rough: 0.05 },
-  diamond: { c: hex('#F4F1E6'), metal: 0.25, rough: 0.03 },
-  navyPlastic: { c: hex('#13243A'), metal: 0, rough: 0.35 },
-  tealPlastic: { c: hex('#0B6F87'), metal: 0, rough: 0.3 },
-  skyPlastic: { c: hex('#19B3D4'), metal: 0, rough: 0.28 },
+  gemCoral: { c: hex('#F0643C'), metal: 0.35, rough: 0.05 },
+  diamond: { c: hex('#F6EEDC'), metal: 0.25, rough: 0.03 },
+  navyPlastic: { c: hex('#1C2A30'), metal: 0, rough: 0.4 },
+  tealPlastic: { c: hex('#2F7E80'), metal: 0, rough: 0.35 },
+  skyPlastic: { c: hex('#4FA9A6'), metal: 0, rough: 0.32 },
+  red: { c: hex('#E0502C'), metal: 0.05, rough: 0.35 },
+  redMetal: { c: hex('#D9452A'), metal: 0.7, rough: 0.28 },
+  steel: { c: hex('#B9B4AA'), metal: 1, rough: 0.3 },
   cream: { c: hex('#FFF4D6'), metal: 0.1, rough: 0.3 },
   silver: { c: hex('#D9E1E8'), metal: 1, rough: 0.18 },
-  ribbonSky: { c: hex('#1597B8'), metal: 0, rough: 0.75 },
+  ribbonSky: { c: hex('#2F7E80'), metal: 0, rough: 0.75 },
   ribbonCoral: { c: hex('#E5573C'), metal: 0, rough: 0.75 },
   black: { c: hex('#0C1118'), metal: 0.1, rough: 0.25 },
-  white: { c: hex('#F1F4F8'), metal: 0, rough: 0.3 },
-  screen: { c: hex('#0A2C3D'), metal: 0.3, rough: 0.06 },
-  coral: { c: hex('#FF6A4D'), metal: 0, rough: 0.3 },
-  mint: { c: hex('#33D49B'), metal: 0, rough: 0.3 },
-  violet: { c: hex('#7B6CF6'), metal: 0, rough: 0.3 },
+  white: { c: hex('#F3E8D2'), metal: 0, rough: 0.32 },
+  screen: { c: hex('#10302F'), metal: 0.3, rough: 0.06 },
+  coral: { c: hex('#E0502C'), metal: 0, rough: 0.3 },
+  mint: { c: hex('#7FC77A'), metal: 0, rough: 0.3 },
+  violet: { c: hex('#E8A07A'), metal: 0, rough: 0.3 },
   wood: { c: hex('#6B4426'), metal: 0, rough: 0.6 },
 };
 
@@ -136,6 +140,25 @@ class Geo {
       this.tri(girdle[i], girdle[j], pav[j], mt);
       this.tri(girdle[i], pav[j], pav[i], mt);
       this.tri(pav[i], pav[j], tip, mt);
+    }
+  }
+  // Тело вращения по профилю [[радиус, высота], ...] вокруг оси Y — для ракеты, сопел, антенн
+  lathe(m, mt, prof, seg = 64) {
+    const nrm = prof.map((p, i) => {
+      const a = prof[Math.max(0, i - 1)], b = prof[Math.min(prof.length - 1, i + 1)];
+      const dy = b[1] - a[1], dr = b[0] - a[0];
+      const l = Math.hypot(dy, dr) || 1;
+      const n = [dy / l, -dr / l];
+      return n[0] < -0.01 ? [-n[0], -n[1]] : n;
+    });
+    for (let i = 0; i < seg; i++) {
+      const u0 = (i / seg) * 2 * Math.PI, u1 = ((i + 1) / seg) * 2 * Math.PI;
+      for (let j = 0; j < prof.length - 1; j++) {
+        const P = (u, k) => tp(m, [Math.cos(u) * prof[k][0], prof[k][1], Math.sin(u) * prof[k][0]]);
+        const N = (u, k) => tn(m, [Math.cos(u) * nrm[k][0], nrm[k][1], Math.sin(u) * nrm[k][0]]);
+        this.tri(P(u0, j), P(u1, j + 1), P(u1, j), mt, N(u0, j), N(u1, j + 1), N(u1, j));
+        this.tri(P(u0, j), P(u0, j + 1), P(u1, j + 1), mt, N(u0, j), N(u0, j + 1), N(u1, j + 1));
+      }
     }
   }
   sphere(m, mt, { r = 0.5, su = 32, sv = 18 } = {}) {
@@ -342,6 +365,11 @@ export const MODELS = {
     g.torus(M.trans(0, 0, 0), MAT.goldPale, { R: 0.6, r: 0.05, su: 80, sv: 12 });
     g.torus(M.trans(-0.13, 0, 0.075), MAT.skyMetal, { R: 0.22, r: 0.045, su: 48, sv: 12 });
     g.torus(M.trans(0.13, 0, 0.075), MAT.goldPale, { R: 0.22, r: 0.045, su: 48, sv: 12 });
+    for (let i = 0; i < 90; i++) {
+      const a = (i / 90) * Math.PI * 2;
+      g.bevelBox(M.chain(M.rotZ(a), M.trans(0.625, 0, 0)), MAT.goldPale, 0.02, 0.018, 0.12, 0.004);
+    }
+    for (let i = 0; i < 5; i++) g.star(M.chain(M.rotZ((i / 5) * Math.PI * 2 + Math.PI / 2), M.trans(0, 0.46, 0.07), M.scale(0.25)), MAT.red, { r: 0.3, inner: 0.13, h: 0.12 });
     return { geo: g, size: 1.2 };
   },
   // Геймпад
@@ -370,6 +398,62 @@ export const MODELS = {
     g.bevelBox(M.trans(0, -0.45, 0.228), MAT.goldPale, 0.4, 0.08, 0.008, 0.003);
     g.star(M.trans(0, 0.32, 0.42), MAT.cream, { r: 0.17, inner: 0.07, h: 0.05 });
     return { geo: g, size: 1.2 };
+  },
+  // Ретро-ракета: обтекатель, полосы, иллюминаторы, стабилизаторы, сопло
+  rocket() {
+    const g = new Geo();
+    const S = M.scale(0.62);
+    const body = [[0.0, 1.6], [0.12, 1.5], [0.24, 1.3], [0.33, 1.05], [0.38, 0.8], [0.4, 0.5], [0.4, 0.1], [0.38, -0.3], [0.33, -0.6], [0.26, -0.78]];
+    g.lathe(S, MAT.red, body.slice(0, 4), 72);
+    g.lathe(S, MAT.white, body.slice(3, 8), 72);
+    g.lathe(S, MAT.red, body.slice(7), 72);
+    g.lathe(M.chain(S, M.trans(0, 0.3, 0)), MAT.gold, [[0.405, 0.04], [0.405, -0.04]], 72);
+    g.lathe(M.chain(S, M.trans(0, -0.1, 0)), MAT.gold, [[0.405, 0.03], [0.405, -0.03]], 72);
+    g.lathe(S, MAT.steel, [[0.26, -0.78], [0.22, -0.84], [0.25, -0.98], [0.3, -1.06], [0.18, -1.06]], 48);
+    for (let k = 0; k < 3; k++) {
+      const y = 0.95 - k * 0.32, ry = (k - 1) * 0.0;
+      g.torus(M.chain(S, M.rotY(ry), M.trans(0, y, 0.385 - k * 0.006)), MAT.gold, { R: 0.085, r: 0.022, su: 40, sv: 10 });
+      g.sphere(M.chain(S, M.trans(0, y, 0.37 - k * 0.006), M.scale(1)), MAT.screen, { r: 0.075, su: 24, sv: 12 });
+    }
+    for (let k = 0; k < 4; k++) {
+      const a = (k / 4) * Math.PI * 2 + Math.PI / 4;
+      g.bevelBox(M.chain(S, M.rotY(a), M.trans(0, -0.55, 0.52), M.rotX(-0.25)), MAT.red, 0.05, 0.62, 0.34, 0.015);
+      g.bevelBox(M.chain(S, M.rotY(a), M.trans(0, -0.84, 0.62)), MAT.gold, 0.06, 0.06, 0.16, 0.012);
+    }
+    g.crystal(M.chain(S, M.trans(0, -1.25, 0), M.rotZ(Math.PI), M.scale(0.3)), MAT.gemGold, { sides: 10, crown: 0.1, table: 0.4, pavilion: 1.0 });
+    return { geo: g, size: 1.2 };
+  },
+  // Спутник: полированная сфера, шов, четыре антенны
+  sputnik() {
+    const g = new Geo();
+    g.sphere(M.ident(), MAT.steel, { r: 0.42, su: 48, sv: 28 });
+    g.torus(M.rotX(Math.PI / 2), MAT.gold, { R: 0.42, r: 0.018, su: 72, sv: 10 });
+    for (let k = 0; k < 4; k++) {
+      const yaw = (k / 4) * Math.PI * 2 + 0.4, tilt = 1.0 + (k % 2) * 0.2;
+      const base = M.chain(M.rotY(yaw), M.rotZ(-tilt));
+      g.lathe(M.chain(base, M.trans(0, 0.38, 0)), MAT.steel, [[0.03, 0], [0.018, 0.05], [0.012, 0.8], [0.006, 0.84]], 16);
+      g.sphere(M.chain(base, M.trans(0, 0.4, 0)), MAT.gold, { r: 0.045, su: 16, sv: 10 });
+    }
+    g.star(M.trans(0, 0.05, 0.415), MAT.red, { r: 0.12, inner: 0.05, h: 0.03 });
+    return { geo: g, size: 1.15 };
+  },
+  // Планета с кольцом: полосы атмосферы и наклонное кольцо
+  planet() {
+    const g = new Geo();
+    const bands = [MAT.white, MAT.gold, MAT.red, MAT.gold, MAT.white, MAT.skyPlastic];
+    const R = 0.55, n = bands.length;
+    for (let b = 0; b < n; b++) {
+      const v0 = (b / n) * Math.PI, v1 = ((b + 1) / n) * Math.PI;
+      const prof = Array.from({ length: 7 }, (_, i) => {
+        const v = v0 + ((v1 - v0) * i) / 6;
+        return [Math.sin(v) * R, Math.cos(v) * R];
+      });
+      g.lathe(M.rotZ(0.18), { ...bands[b], rough: 0.5, metal: 0 }, prof, 64);
+    }
+    g.lathe(M.chain(M.rotZ(0.18), M.rotX(0.32)), { c: hex('#F3E8D2'), metal: 0.2, rough: 0.4 }, [[0.75, 0.01], [1.05, 0.0], [1.06, -0.01], [0.74, -0.005], [0.75, 0.01]], 96);
+    g.lathe(M.chain(M.rotZ(0.18), M.rotX(0.32)), MAT.red, [[1.08, 0.006], [1.18, 0], [1.08, -0.006], [1.08, 0.006]], 96);
+    g.sphere(M.trans(1.1, 0.55, 0.1), MAT.skyPlastic, { r: 0.09, su: 20, sv: 12 });
+    return { geo: g, size: 1.35 };
   },
   shard() {
     const g = new Geo();
@@ -409,16 +493,16 @@ vec3 env(vec3 d) {
   vec3 k = normalize(vec3(0.55, 0.45, 0.7));
   c += vec3(3.2, 2.5, 1.6) * pow(max(dot(d, k), 0.0), 60.0);
   vec3 r = normalize(vec3(-0.85, 0.25, -0.5));
-  c += vec3(0.35, 2.2, 2.8) * pow(max(dot(d, r), 0.0), 26.0);
+  c += vec3(2.6, 0.9, 0.45) * pow(max(dot(d, r), 0.0), 26.0);
   vec3 f = normalize(vec3(-0.9, 0.05, 0.45));
-  c += vec3(0.25, 0.42, 1.05) * pow(max(dot(d, f), 0.0), 5.0) * 0.55;
+  c += vec3(0.25, 0.7, 0.68) * pow(max(dot(d, f), 0.0), 5.0) * 0.55;
   c += vec3(0.05, 0.035, 0.02) * smoothstep(0.0, -0.6, y);
   return c;
 }
 vec3 envBlur(vec3 d, float rough) {
   // Грубая «размытая» версия окружения для шероховатых поверхностей
   vec3 sharp = env(d);
-  vec3 soft = mix(vec3(0.02, 0.03, 0.045), vec3(0.32, 0.30, 0.28), smoothstep(-0.4, 1.0, d.y)) + vec3(0.05, 0.28, 0.36) * max(dot(d, normalize(vec3(-0.85, 0.25, -0.5))), 0.0) * 0.6;
+  vec3 soft = mix(vec3(0.03, 0.025, 0.03), vec3(0.36, 0.31, 0.25), smoothstep(-0.4, 1.0, d.y)) + vec3(0.36, 0.14, 0.06) * max(dot(d, normalize(vec3(-0.85, 0.25, -0.5))), 0.0) * 0.6;
   return mix(sharp, soft, clamp(rough * 1.6, 0.0, 1.0));
 }
 float unpack(vec4 c) { return dot(c, vec4(1.0, 1.0 / 255.0, 1.0 / 65025.0, 1.0 / 16581375.0)); }
@@ -460,8 +544,8 @@ void main() {
   // Три источника: тёплый ключевой (с тенью), синий заполняющий, неоновый контровой
   vec3 Ls[3]; vec3 Cs[3];
   Ls[0] = normalize(uKeyDir);                Cs[0] = vec3(3.6, 3.05, 2.3) * sh;
-  Ls[1] = normalize(vec3(-0.9, 0.15, 0.45)); Cs[1] = vec3(0.35, 0.6, 1.5);
-  Ls[2] = normalize(vec3(-0.3, 0.45, -1.0)); Cs[2] = vec3(0.3, 2.4, 3.0);
+  Ls[1] = normalize(vec3(-0.9, 0.15, 0.45)); Cs[1] = vec3(0.35, 0.95, 0.95);
+  Ls[2] = normalize(vec3(-0.3, 0.45, -1.0)); Cs[2] = vec3(3.0, 1.1, 0.5);
   for (int i = 0; i < 3; i++) {
     vec3 L = Ls[i];
     vec3 H = normalize(L + V);
@@ -493,6 +577,15 @@ void main() {
   }
   col = aces(col * 0.9);
   col = pow(col, vec3(1.0 / 2.2));
+  // Плакатная стилизация: цветовые полосы, растровые точки в тенях, контур как у печатной иллюстрации
+  vec3 poster = floor(col * 5.0 + 0.5) / 5.0;
+  col = mix(col, poster, 0.45);
+  float lum = dot(col, vec3(0.299, 0.587, 0.114));
+  vec2 cell = fract(gl_FragCoord.xy / 5.0) - 0.5;
+  float dotR = clamp((0.42 - lum) * 1.3, 0.0, 0.5);
+  if (length(cell) < dotR) col *= 0.55;
+  float edge = 1.0 - smoothstep(0.08, 0.3, NdV);
+  col = mix(col, vec3(0.05, 0.035, 0.03), edge * 0.8);
   gl_FragColor = vec4(col, uAlpha);
 }`;
 

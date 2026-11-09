@@ -45,6 +45,10 @@ export const config = {
   economy: {
     platformFeePercent: num('PLATFORM_FEE_PERCENT', 20),
     abToKzt: num('AB_TO_KZT', 10),
+    // Комиссия платформы с продажи награды (продавец получает остальное)
+    sellerFeePercent: num('SELLER_FEE_PERCENT', 10),
+    // Минимальная сумма вывода для продавца
+    payoutMinAb: num('PAYOUT_MIN_AB', 500),
     dailySubmissionLimit: num('DAILY_SUBMISSION_LIMIT', 10),
   },
   // Маскот: если задан ключ Anthropic, отвечает настоящий ИИ (Claude); иначе — встроенная база знаний

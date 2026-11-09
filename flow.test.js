@@ -149,6 +149,10 @@ test('дубликат текста от второго участника по�
 });
 
 test('Telegram: привязка по коду, бонус, 1 Telegram = 1 аккаунт', async () => {
+  // Бонусы платятся из бюджета платформы: без денег на её счёте бонуса нет
+  const { postTransaction } = await import('../server/services/ledger.js');
+  const { platformAccountId } = await import('../server/db.js');
+  postTransaction({ userId: platformAccountId(), amount: 100, type: 'deposit', title: 'Маркетинговый бюджет платформы' });
   const { data: code } = await user('POST', '/api/telegram/link-code', {});
   assert.match(code.deepLink, /^https:\/\/t\.me\/attention_test_bot\?start=/);
 
@@ -226,8 +230,8 @@ test('закрытие кампании возвращает неиспольз�
   let r = await company('POST', `/api/company/campaigns/${campaignId}/status`, { status: 'closed' });
   assert.equal(r.status, 200);
   r = await company('GET', '/api/company/overview');
-  // 1000 − 120 резерв + 60 возврат (одно место не использовано)
-  assert.equal(r.data.balance, 940);
+  // 1000 − 120 резерв + 60 возврат (одно место не использовано) + 36 выручки с проданной награды (40 − 10% комиссии)
+  assert.equal(r.data.balance, 976);
   r = await company('GET', `/api/company/campaigns/${campaignId}/export.csv`);
   assert.match(r.data, /submission_id/);
 });
@@ -507,4 +511,36 @@ test('v5: видео отдаётся частями (Range) для перемо
   assert.equal(res.status, 206);
   assert.equal((await res.arrayBuffer()).byteLength, 100);
   assert.match(res.headers.get('content-range'), /^bytes 0-99\//);
+});
+
+test('экономика v2: продажа награды платит продавцу, казна сходится, вывод только для компаний', async () => {
+  let r = await fetch(`${base}/api/economy`);
+  let t = await r.json();
+  assert.equal(t.ok, true, 'Σ балансов + резервы = пополнения − выплаты');
+  assert.ok(t.flows.sellerRevenue > 0, 'продавцы получили выручку');
+  const { one: q } = await import('../server/db.js');
+  const saleFees = q("SELECT COALESCE(SUM(seller_fee), 0) AS v FROM redemptions").v;
+  assert.equal(t.flows.spentOnRewards, t.flows.sellerRevenue + saleFees, 'потраченное участниками = выручка продавцов + комиссия');
+
+  r = await company('GET', '/api/company/revenue');
+  assert.equal(r.status, 200);
+  assert.ok(r.data.sold >= 1);
+  assert.equal(r.data.gross, r.data.net + r.data.fee);
+  assert.equal(r.data.netKzt, r.data.net * 10);
+
+  r = await company('POST', '/api/company/payouts', { amount: 100 });
+  assert.equal(r.status, 400, 'меньше минимальной суммы');
+  r = await company('POST', '/api/company/payouts', { amount: 99999 });
+  assert.equal(r.status, 400, 'больше баланса');
+  const before = (await company('GET', '/api/company/overview')).data.balance;
+  r = await company('POST', '/api/company/payouts', { amount: 500 });
+  assert.equal(r.status, 200);
+  assert.equal(r.data.balance, before - 500);
+  assert.equal(r.data.payout.amountKzt, 5000);
+  r = await user('POST', '/api/company/payouts', { amount: 500 });
+  assert.equal(r.status, 403, 'участники не выводят AB в деньги');
+
+  t = await (await fetch(`${base}/api/economy`)).json();
+  assert.equal(t.ok, true, 'после вывода казна по-прежнему сходится');
+  assert.equal(t.payouts, 500);
 });

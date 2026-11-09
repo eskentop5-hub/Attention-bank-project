@@ -122,6 +122,8 @@ CREATE TABLE IF NOT EXISTS redemptions (
   user_id     INTEGER NOT NULL REFERENCES users(id),
   code        TEXT NOT NULL,
   cost        INTEGER NOT NULL,
+  seller_net  INTEGER,                 -- сколько AB получил продавец награды
+  seller_fee  INTEGER,                 -- комиссия платформы с продажи
   created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
@@ -161,4 +163,15 @@ CREATE TABLE IF NOT EXISTS user_visits (
   user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   day      TEXT NOT NULL,              -- YYYY-MM-DD в часовом поясе платформы
   PRIMARY KEY (user_id, day)
+);
+
+-- Заявки продавцов на вывод AB в тенге (AB списываются сразу, перевод — по договору; в демо деньги не переводятся)
+CREATE TABLE IF NOT EXISTS payouts (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id  INTEGER NOT NULL REFERENCES users(id),
+  amount      INTEGER NOT NULL CHECK (amount > 0),
+  amount_kzt  INTEGER NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'requested',   -- requested | paid | rejected
+  note        TEXT,
+  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );

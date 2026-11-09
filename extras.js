@@ -53,7 +53,7 @@ export async function viewDeck({ query } = {}) {
       html: `<h1 class="deck-h1">Ваше внимание.<span>Ваша ценность.</span></h1>
         <p class="deck-lead">ATTENTION BANK — место, где компании платят за ваше внимание честно: вы тестируете игры и приложения, а взамен получаете ключи игр, предметы и подписки.</p>
         <div class="row">${reg}${login}</div>`,
-      model: ['logo', 0, 3.4],
+      model: ['rocket', 0, 3.5],
     },
     {
       k: 'Проблема',
@@ -63,7 +63,7 @@ export async function viewDeck({ query } = {}) {
           <div class="pt tilt"><b>Студии</b><span>Не могут найти честных тестировщиков: опросы заполняют наугад.</span></div>
           <div class="pt tilt"><b>Люди</b><span>Хотят заранее знать, сколько времени отдают и что получат.</span></div>
         </div>`,
-      model: ['coin', 0, 3.2],
+      model: ['planet', 0, 3.6],
     },
     {
       k: 'Как это работает',
@@ -74,7 +74,7 @@ export async function viewDeck({ query } = {}) {
           <li class="tilt"><i>3</i><b>Ответ проверяется</b><span>Время, смысл, дубликаты, контрольный вопрос</span></li>
           <li class="tilt"><i>4</i><b>AB Points на баланс</b><span>И сразу можно менять на награды</span></li>
         </ol>`,
-      model: ['gamepad', 0, 3.4],
+      model: ['sputnik', 0, 3.6],
     },
     {
       k: 'Что можно получить',
@@ -129,11 +129,23 @@ export async function viewDeck({ query } = {}) {
       model: ['game_access', 0, 3.2],
     },
     {
+      k: 'Экономика',
+      html: `<h2 class="deck-h2">Замкнутый круг, где выигрывают все.</h2>
+        <div class="eco-mini">
+          <div class="tilt"><b>Компании</b><span>Пополняют бюджет: 1 AB = 10 ₸. Платят только за одобренный результат.</span></div>
+          <div class="tilt"><b>Участники</b><span>Получают AB за внимание и меняют их на награды.</span></div>
+          <div class="tilt"><b>Продавцы наград</b><span>Получают 90% стоимости каждого обмена и выводят выручку в тенге.</span></div>
+          <div class="tilt"><b>Платформа</b><span>20% с результата и 10% с продажи. Баллы из воздуха не появляются.</span></div>
+        </div>
+        <div class="row"><a class="btn btn-ghost btn-lg" href="#/economy">Живые цифры экономики →</a></div>`,
+      model: ['coin', 0, 3.2],
+    },
+    {
       k: 'Начнём',
       html: `<h2 class="deck-h1" style="font-size:clamp(2.2rem,6vw,4.6rem)">Ваше внимание<span>чего-то стоит.</span></h2>
         <p class="deck-lead">Создайте аккаунт за минуту — короткое обучение покажет, где что находится.</p>
         <div class="row">${reg}${login}</div>`,
-      model: ['logo', 0, 3.4],
+      model: ['rocket', 0, 3.5],
     },
   ];
   let i = Math.min(slides.length - 1, Math.max(0, Number(query?.s || 0) || 0));
@@ -211,14 +223,14 @@ function barChart(days, { h = 220, id = 'bars', W = 1100 } = {}) {
     .join('');
   return `<div class="chart" id="${id}"><svg viewBox="0 0 ${W} ${h}" role="group" aria-label="Заработок AB Points по дням">${grid}${bars}</svg><div class="tip" hidden></div></div>`;
 }
-function bindChart(root, days, onPick) {
+function bindChart(root, days, onPick, { count = ['задание', 'задания', 'заданий'], verb = 'заработано' } = {}) {
   const tip = root.querySelector('.tip');
   root.querySelectorAll('.bar').forEach((g) => {
     const d = days[Number(g.dataset.k)];
     const show = () => {
       root.querySelectorAll('.bar').forEach((x) => x.classList.toggle('dim', x !== g));
       tip.hidden = false;
-      tip.innerHTML = `<b>${dayShort(d.day)}, ${weekday(d.day)}</b><span>+${d.earned} AB заработано</span>${d.spent ? `<span>−${d.spent} AB на награды</span>` : ''}<span>${d.tasks} ${D.plural(d.tasks, 'задание', 'задания', 'заданий')}</span>`;
+      tip.innerHTML = `<b>${dayShort(d.day)}, ${weekday(d.day)}</b><span>+${d.earned} AB ${verb}</span>${d.spent ? `<span>−${d.spent} AB на награды</span>` : ''}<span>${d.tasks} ${D.plural(d.tasks, ...count)}</span>`;
       const r = g.getBoundingClientRect(), rr = root.getBoundingClientRect();
       tip.style.left = `${Math.min(rr.width - 170, Math.max(0, r.left - rr.left + r.width / 2 - 80))}px`;
     };
@@ -310,19 +322,46 @@ export function bindPulse(root, p) {
 // ===================================================================
 //                         МАСКОТ «АБИ»
 // ===================================================================
-const MASCOT_SVG = `<svg viewBox="0 0 80 96" aria-hidden="true">
-  <ellipse cx="40" cy="92" rx="20" ry="3.5" fill="rgba(0,0,0,.35)"/>
-  <g class="legs"><path class="leg l" d="M31 70 L28 88" stroke="#0B5F7A" stroke-width="5" stroke-linecap="round"/><path class="leg r" d="M49 70 L52 88" stroke="#0B5F7A" stroke-width="5" stroke-linecap="round"/></g>
+// Маскот: банан внутри золотой монеты с буквами «AT» (векторный, анимируется: ходьба, взмах рукой, моргание)
+const MASCOT_SVG = `<svg viewBox="0 0 100 120" aria-hidden="true">
+  <defs>
+    <radialGradient id="mBan" cx="38%" cy="26%" r="78%"><stop offset="0" stop-color="#FFF6B0"/><stop offset=".35" stop-color="#FBDD3A"/><stop offset=".8" stop-color="#EDBE12"/><stop offset="1" stop-color="#C99406"/></radialGradient>
+    <linearGradient id="mLimb" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FCE24C"/><stop offset="1" stop-color="#E2B10C"/></linearGradient>
+    <radialGradient id="mCoin" cx="40%" cy="32%" r="75%"><stop offset="0" stop-color="#FFF0A0"/><stop offset=".45" stop-color="#F7C928"/><stop offset="1" stop-color="#C98E06"/></radialGradient>
+    <linearGradient id="mRim" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFE67A"/><stop offset=".5" stop-color="#E0A50A"/><stop offset="1" stop-color="#A87204"/></linearGradient>
+    <linearGradient id="mTxt" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFE05A"/><stop offset=".55" stop-color="#FFA62B"/><stop offset="1" stop-color="#F26B12"/></linearGradient>
+    <radialGradient id="mIris" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="#B07432"/><stop offset="1" stop-color="#4A2A0E"/></radialGradient>
+  </defs>
+  <ellipse cx="50" cy="116" rx="24" ry="3.6" fill="rgba(0,0,0,.35)"/>
+  <g class="leg l"><path d="M43 95 L41 109" stroke="url(#mLimb)" stroke-width="5" stroke-linecap="round"/><ellipse cx="38.5" cy="111.5" rx="6.5" ry="3.4" fill="#E9B80F"/><ellipse cx="37" cy="110.6" rx="3" ry="1.2" fill="#FFF0A0" opacity=".7"/></g>
+  <g class="leg r"><path d="M57 95 L59 109" stroke="url(#mLimb)" stroke-width="5" stroke-linecap="round"/><ellipse cx="61.5" cy="111.5" rx="6.5" ry="3.4" fill="#E9B80F"/><ellipse cx="60" cy="110.6" rx="3" ry="1.2" fill="#FFF0A0" opacity=".7"/></g>
   <g class="body">
-    <line x1="40" y1="14" x2="40" y2="5" stroke="#74D9EE" stroke-width="3" stroke-linecap="round"/><circle class="bulb" cx="40" cy="5" r="4.5" fill="#19B3D4"/>
-    <circle cx="40" cy="44" r="30" fill="url(#abg)"/><circle cx="40" cy="44" r="30" fill="none" stroke="#FFE08A" stroke-width="3"/>
-    <circle cx="40" cy="44" r="24" fill="none" stroke="#B88600" stroke-width="1.5" opacity=".55"/>
-    <g class="eyes"><ellipse cx="30" cy="40" rx="6" ry="7.5" fill="#fff"/><ellipse cx="50" cy="40" rx="6" ry="7.5" fill="#fff"/><circle class="pupil" cx="31" cy="41" r="3.3" fill="#0C1118"/><circle class="pupil" cx="51" cy="41" r="3.3" fill="#0C1118"/></g>
-    <path d="M32 54 Q40 61 48 54" stroke="#6B4426" stroke-width="3" fill="none" stroke-linecap="round"/>
-    <circle cx="22" cy="51" r="3.5" fill="#FF8A5C" opacity=".55"/><circle cx="58" cy="51" r="3.5" fill="#FF8A5C" opacity=".55"/>
-    <path class="arm l" d="M11 46 Q4 40 6 32" stroke="#0B5F7A" stroke-width="4.5" fill="none" stroke-linecap="round"/><path class="arm r" d="M69 46 Q76 52 74 60" stroke="#0B5F7A" stroke-width="4.5" fill="none" stroke-linecap="round"/>
+    <path d="M47.5 9.5 C47 5 48.5 2 51 0.8 L56 1.6 C53.8 3.4 52.8 6.4 52.8 9.6 Z" fill="#8A5A1C"/><ellipse cx="53.5" cy="1.3" rx="2.8" ry="1.3" fill="#4E3210"/>
+    <path d="M50 8.5 C38 9 30.5 21 29.5 40 C29 50 28.5 62 28.5 82 C28.5 94 38 99 50 99 C62 99 71.5 94 71.5 82 C71.5 62 71 50 70.5 40 C69.5 21 62 9 50 8.5 Z" fill="url(#mBan)"/>
+    <path d="M38 14 C33 22 32 32 32.5 44" stroke="#FFFBD6" stroke-width="2.4" fill="none" stroke-linecap="round" opacity=".75"/>
+    <path d="M62 13 C67 22 68.5 32 68.5 46" stroke="#B88507" stroke-width="1.2" fill="none" opacity=".45"/>
+    <circle cx="63" cy="22" r=".9" fill="#8A5A1C" opacity=".5"/><circle cx="35" cy="50" r=".8" fill="#8A5A1C" opacity=".45"/>
+    <g class="eyes">
+      <ellipse cx="41" cy="31" rx="7.6" ry="8.8" fill="#fff" stroke="#8A6A10" stroke-width=".6"/><ellipse cx="59" cy="31" rx="7.6" ry="8.8" fill="#fff" stroke="#8A6A10" stroke-width=".6"/>
+      <g class="pupils"><circle cx="42.2" cy="32.2" r="4.7" fill="url(#mIris)"/><circle cx="60.2" cy="32.2" r="4.7" fill="url(#mIris)"/><circle cx="42.4" cy="32.5" r="2.5" fill="#120A04"/><circle cx="60.4" cy="32.5" r="2.5" fill="#120A04"/>
+      <circle cx="40.6" cy="30.2" r="1.5" fill="#fff"/><circle cx="58.6" cy="30.2" r="1.5" fill="#fff"/><circle cx="43.8" cy="34" r=".7" fill="#fff"/><circle cx="61.8" cy="34" r=".7" fill="#fff"/></g>
+    </g>
+    <path d="M34.5 20 Q40 16 46 19" stroke="#6B3E12" stroke-width="2" fill="none" stroke-linecap="round"/><path d="M54 19 Q60 16 65.5 20" stroke="#6B3E12" stroke-width="2" fill="none" stroke-linecap="round"/>
+    <path d="M41.5 41.5 Q50 49.5 58.5 41.5" stroke="#7A3E10" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+    <ellipse cx="34.5" cy="40" rx="3.6" ry="2.2" fill="#FF9A4D" opacity=".4"/><ellipse cx="65.5" cy="40" rx="3.6" ry="2.2" fill="#FF9A4D" opacity=".4"/>
+    <circle cx="50" cy="78" r="27" fill="url(#mRim)"/>
+    <circle cx="50" cy="78" r="25.6" fill="none" stroke="#9C6A04" stroke-width="2.2" stroke-dasharray="1.1 1.1" opacity=".75"/>
+    <circle cx="50" cy="78" r="22.5" fill="url(#mCoin)" stroke="#FFF3B5" stroke-width="1" stroke-opacity=".8"/>
+    <circle cx="50" cy="78" r="19.5" fill="none" stroke="#C99406" stroke-width=".7" opacity=".6"/>
+    <path d="M37 67 A18 18 0 0 1 58 60.5" stroke="#FFFBE0" stroke-width="2" fill="none" stroke-linecap="round" opacity=".7"/>
+    <text x="50" y="86" text-anchor="middle" font-family="'Arial Black','Geologica',system-ui,sans-serif" font-weight="900" font-size="21" letter-spacing="-.6" fill="none" stroke="#EAF7FF" stroke-width="5.2" stroke-linejoin="round">AT</text>
+    <text x="50" y="86" text-anchor="middle" font-family="'Arial Black','Geologica',system-ui,sans-serif" font-weight="900" font-size="21" letter-spacing="-.6" fill="url(#mTxt)" stroke="#1D57B5" stroke-width="2.2" stroke-linejoin="round" paint-order="stroke">AT</text>
+    <path d="M31.5 72 l1 2.6 2.6 1 -2.6 1 -1 2.6 -1 -2.6 -2.6 -1 2.6 -1 z" fill="#fff"/><path d="M68.5 65 l.8 2 2 .8 -2 .8 -.8 2 -.8 -2 -2 -.8 2 -.8 z" fill="#fff" opacity=".9"/>
+    <g class="arm l"><path d="M24 70 Q15 64 12 54" stroke="url(#mLimb)" stroke-width="4.6" fill="none" stroke-linecap="round"/>
+      <g fill="#F6CD22"><ellipse cx="11" cy="48.5" rx="5.6" ry="5"/><rect x="5.2" y="38" width="2.6" height="9" rx="1.3" transform="rotate(-18 6.5 42)"/><rect x="8.4" y="36" width="2.6" height="10" rx="1.3" transform="rotate(-6 9.7 41)"/><rect x="11.6" y="36" width="2.6" height="10" rx="1.3" transform="rotate(6 12.9 41)"/><rect x="14.6" y="38" width="2.6" height="9" rx="1.3" transform="rotate(18 15.9 42)"/><rect x="15.5" y="46" width="2.6" height="7" rx="1.3" transform="rotate(55 16.8 49.5)"/></g></g>
+    <g class="arm r"><path d="M76 70 Q85 64 88 54" stroke="url(#mLimb)" stroke-width="4.6" fill="none" stroke-linecap="round"/>
+      <g fill="#F6CD22"><ellipse cx="89" cy="48.5" rx="5.6" ry="5"/><rect x="82.8" y="38" width="2.6" height="9" rx="1.3" transform="rotate(-18 84.1 42)"/><rect x="85.8" y="36" width="2.6" height="10" rx="1.3" transform="rotate(-6 87.1 41)"/><rect x="89" y="36" width="2.6" height="10" rx="1.3" transform="rotate(6 90.3 41)"/><rect x="92.2" y="38" width="2.6" height="9" rx="1.3" transform="rotate(18 93.5 42)"/><rect x="81.9" y="46" width="2.6" height="7" rx="1.3" transform="rotate(-55 83.2 49.5)"/></g></g>
   </g>
-  <defs><radialGradient id="abg" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#FFE38A"/><stop offset=".55" stop-color="#F2B705"/><stop offset="1" stop-color="#B88600"/></radialGradient></defs>
 </svg>`;
 
 const mascot = { el: null, x: 80, dir: 1, speed: 38, pause: 0, raf: 0, last: 0, bubbleT: 0, chat: [], open: false };
@@ -482,6 +521,7 @@ export function startTour(force = false) {
           { s: '[href="#/company/new"]', t: 'Создайте кампанию', d: 'Описание, награда участникам и вопросы. Для видео добавьте контрольный вопрос с правильным ответом.' },
           { s: '.balance-chip', t: 'Бюджет', d: 'Бюджет резервируется при запуске, а списывается только за одобренные ответы.' },
           { s: '[href="#/company/rewards"]', t: 'Награды', d: 'Добавьте ключи своих игр и предметы — за них участники будут копить AB.' },
+          { s: '[href="#/company/revenue"]', t: 'Выручка', d: 'Каждый обмен вашей награды приносит вам 90% её стоимости в AB. Выручку можно вывести в тенге или вложить в новые тесты.' },
           { s: '.mascot-btn', t: 'Аби поможет', d: 'Нажмите на маскота, чтобы задать вопрос.' },
         ]
       : [
@@ -534,4 +574,139 @@ export function startTour(force = false) {
   ov.addEventListener('keydown', (e) => e.key === 'Escape' && finish());
   addEventListener('resize', place);
   place();
+}
+
+// ===================================================================
+//                 ЭКОНОМИКА v2: публичная казна и калькулятор
+// ===================================================================
+const kzt = (n) => `${Math.round(n).toLocaleString('ru-RU')} ₸`;
+
+function flowDiagram(t) {
+  const f = t.flows;
+  return `<div class="flow" role="img" aria-label="Схема движения баллов: компании пополняют бюджет, платят участникам за результат, участники обменивают баллы на награды продавцов, продавцы выводят выручку в тенге">
+    <div class="node n-company tilt"><small>Компании</small><b>${fmt(t.deposits)} AB</b><span>пополнили бюджет · ${kzt(t.deposits * t.abToKzt)}</span></div>
+    <div class="arrow"><span>за проверенный результат</span><b>${fmt(f.paidToUsers)} AB</b></div>
+    <div class="node n-user tilt"><small>Участники</small><b>${fmt(t.holders.users)} AB</b><span>на балансах сейчас</span></div>
+    <div class="arrow"><span>обмен на награды</span><b>${fmt(f.spentOnRewards)} AB</b></div>
+    <div class="node n-seller tilt"><small>Продавцы наград</small><b>${fmt(f.sellerRevenue)} AB</b><span>выручка · ${kzt(f.sellerRevenue * t.abToKzt)}</span></div>
+    <div class="arrow"><span>вывод в тенге</span><b>${fmt(t.payouts)} AB</b></div>
+    <div class="node n-out tilt"><small>Выведено</small><b>${kzt(t.payouts * t.abToKzt)}</b><span>по заявкам продавцов</span></div>
+    <div class="node n-platform tilt"><small>Платформа</small><b>${fmt(f.platformFees)} AB</b><span>комиссии ${t.rules.platformFeePercent}% с результата и ${t.rules.sellerFeePercent}% с продажи</span></div>
+  </div>`;
+}
+
+export async function viewEconomy() {
+  const t = await D.api('/api/economy');
+  D.app.innerHTML = `
+  <div class="page-head"><div><p class="kicker">Прозрачность</p><h1>Экономика ATTENTION BANK</h1><p>Живые цифры всей платформы. Каждый AB обеспечен деньгами, которые внесли компании.</p></div>
+    <span class="treasury-check ${t.ok ? 'ok' : 'bad'}">${t.ok ? '✓ Казна сходится' : '⚠ Расхождение'}</span></div>
+  <div class="kpi-row">
+    <div class="kpi tilt gold"><span>AB в обороте</span><b>${fmt(t.supply)}<small>AB</small></b><em>обеспечено ${kzt(t.backedKzt)}</em></div>
+    <div class="kpi tilt"><span>Курс обеспечения</span><b>1 AB<small>= ${t.abToKzt} ₸</small></b><em>для компаний и продавцов</em></div>
+    <div class="kpi tilt"><span>В резерве кампаний</span><b>${fmt(t.reserved)}<small>AB</small></b><em>ждут результатов</em></div>
+    <div class="kpi tilt"><span>Выплачено участникам</span><b>${fmt(t.flows.paidToUsers)}<small>AB</small></b><em>за одобренные ответы</em></div>
+    <div class="kpi tilt"><span>Выручка продавцов</span><b>${fmt(t.flows.sellerRevenue)}<small>AB</small></b><em>${kzt(t.flows.sellerRevenue * t.abToKzt)}</em></div>
+  </div>
+  <section class="panel" style="margin-top:20px">
+    <h2 style="font-size:1.15rem;margin-top:0">Как движутся баллы</h2>
+    ${flowDiagram(t)}
+    <p class="tiny muted" style="margin:14px 0 0">Проверка казны: Σ балансов всех счетов (${fmt(t.supply - t.reserved)}) + резервы кампаний (${fmt(t.reserved)}) = пополнения (${fmt(t.deposits)}) − выводы (${fmt(t.payouts)}) → ${fmt(t.supply)} = ${fmt(t.deposits - t.payouts)} ${t.ok ? '✓' : '✗'}</p>
+  </section>
+  <div class="eco-grid">
+    <section class="panel">
+      <h2 style="font-size:1.1rem;margin-top:0">Правила</h2>
+      <ol class="rules">
+        <li><b>Баллы создаются только пополнением.</b> Компания вносит деньги — получает AB по курсу 1 AB = ${t.abToKzt} ₸. Других способов «напечатать» баллы нет: даже бонусы платформа платит из своих доходов.</li>
+        <li><b>Компания платит за результат.</b> Награда участнику + ${t.rules.platformFeePercent}% комиссии, только за одобренный ответ. Неиспользованный резерв возвращается.</li>
+        <li><b>Баллы не сгорают при обмене.</b> Продавец награды получает ${100 - t.rules.sellerFeePercent}% стоимости, платформа — ${t.rules.sellerFeePercent}%.</li>
+        <li><b>Вывод в тенге — только для продавцов</b> по договору, от ${fmt(t.rules.payoutMinAb)} AB. Для участников AB остаются баллами: их нельзя вывести, только обменять.</li>
+        <li><b>Всё сверяется автоматически.</b> Баланс каждого счёта = сумма его транзакций, а вся казна = пополнения − выводы.</li>
+      </ol>
+    </section>
+    <section class="panel calc" id="calc">
+      <h2 style="font-size:1.1rem;margin-top:0">Калькулятор</h2>
+      <label class="field"><span class="label">Награда участнику за задание: <b id="c-r"></b></span><input type="range" min="5" max="100" step="5" value="20" id="c-reward"></label>
+      <label class="field"><span class="label">Сколько ответов нужно компании: <b id="c-n"></b></span><input type="range" min="10" max="500" step="10" value="100" id="c-count"></label>
+      <label class="field"><span class="label">Цена награды в каталоге: <b id="c-p"></b></span><input type="range" min="20" max="500" step="10" value="200" id="c-price"></label>
+      <div class="calc-out" id="c-out" aria-live="polite"></div>
+    </section>
+  </div>`;
+  const $c = (id) => D.app.querySelector(id);
+  const calc = () => {
+    const r = Number($c('#c-reward').value), n = Number($c('#c-count').value), p = Number($c('#c-price').value);
+    const fee = Math.ceil((r * t.rules.platformFeePercent) / 100);
+    const budget = (r + fee) * n;
+    const sFee = Math.ceil((p * t.rules.sellerFeePercent) / 100);
+    const tasksForReward = Math.ceil(p / r);
+    $c('#c-r').textContent = `${r} AB`;
+    $c('#c-n').textContent = n;
+    $c('#c-p').textContent = `${p} AB`;
+    $c('#c-out').innerHTML = `
+      <div><small>Компания платит</small><b>${kzt(budget * t.abToKzt)}</b><span>${fmt(budget)} AB: ${n} × (${r} + ${fee} комиссия)</span></div>
+      <div><small>Участники получают</small><b>${fmt(r * n)} AB</b><span>${r} AB за ответ · на награду нужно ≈ ${tasksForReward} ${D.plural(tasksForReward, 'задание', 'задания', 'заданий')}</span></div>
+      <div><small>Продавец с одной награды</small><b>${kzt((p - sFee) * t.abToKzt)}</b><span>${p - sFee} AB после комиссии ${sFee} AB</span></div>
+      <div><small>Платформа</small><b>${kzt((fee * n + sFee) * t.abToKzt)}</b><span>${fee * n} AB с кампании + ${sFee} AB с продажи</span></div>`;
+  };
+  D.app.querySelectorAll('#calc input').forEach((i) => i.addEventListener('input', calc));
+  calc();
+}
+
+// ===================================================================
+//                    КАБИНЕТ ПРОДАВЦА: выручка и вывод
+// ===================================================================
+export async function viewRevenue() {
+  const v = await D.api('/api/company/revenue');
+  const me = D.state.me;
+  const statusLabel = { requested: 'заявка создана', paid: 'выплачено', rejected: 'отклонено' };
+  D.app.innerHTML = `
+  <div class="page-head"><div><h1>Выручка с наград</h1><p>Когда участник обменивает AB на вашу награду, баллы не сгорают: вы получаете ${100 - v.rules.sellerFeePercent}% стоимости, платформа — ${v.rules.sellerFeePercent}%.</p></div>
+    <div class="row"><a class="btn btn-ghost" href="#/budget">Бюджет</a><a class="btn btn-ghost" href="#/economy">Как устроена экономика</a></div></div>
+  <div class="kpi-row">
+    <div class="kpi tilt gold"><span>Чистая выручка</span><b>${fmt(v.net)}<small>AB</small></b><em>${kzt(v.netKzt)}</em></div>
+    <div class="kpi tilt"><span>Продано наград</span><b>${fmt(v.sold)}</b><em>на ${fmt(v.gross)} AB</em></div>
+    <div class="kpi tilt"><span>Комиссия платформы</span><b>${fmt(v.fee)}<small>AB</small></b><em>${v.rules.sellerFeePercent}% с продажи</em></div>
+    <div class="kpi tilt"><span>Вернулось из бюджета тестов</span><b>${v.returnRate === null ? '—' : `${v.returnRate}%`}</b><em>участники купили ваши же награды</em></div>
+    <div class="kpi tilt"><span>Доступно к выводу</span><b>${fmt(me.balance)}<small>AB</small></b><em>${kzt(me.balance * v.rules.abToKzt)} · выручка + свободный бюджет</em></div>
+  </div>
+  <section class="panel" style="margin-top:20px">
+    <div class="section-head" style="margin:0 0 6px"><h2 style="font-size:1.15rem">Выручка за 14 дней</h2><span class="small muted">AB после комиссии</span></div>
+    ${barChart(v.days, { id: 'rev-bars' })}
+  </section>
+  <div class="eco-grid">
+    <section class="panel">
+      <h2 style="font-size:1.1rem;margin-top:0">По наградам</h2>
+      ${v.byReward.length ? `<table class="table"><thead><tr><th>Награда</th><th class="r">Продано</th><th class="r">Выручка</th><th class="r">Остаток</th></tr></thead><tbody>${v.byReward.map((r) => `<tr><td>${esc(r.title)}<div class="tiny muted">${r.cost} AB за штуку</div></td><td class="r">${r.sold}</td><td class="r"><b>${fmt(r.net)} AB</b><div class="tiny muted">${kzt(r.netKzt)}</div></td><td class="r">${r.stock}</td></tr>`).join('')}</tbody></table>` : `<p class="muted">Добавьте награды — <a href="#/company/rewards">ключи своей игры, предметы, доступ</a>.</p>`}
+    </section>
+    <section class="panel">
+      <h2 style="font-size:1.1rem;margin-top:0">Вывод в тенге</h2>
+      <p class="small muted" style="margin-top:0">Курс: 1 AB = ${v.rules.abToKzt} ₸. Минимум ${fmt(v.rules.payoutMinAb)} AB. Баллы списываются сразу, перевод — по договору.${v.rules.demo ? ' <b style="color:var(--gold-ink)">Демо-режим: заявка создаётся, но деньги не переводятся.</b>' : ''}</p>
+      <form id="payout" class="row" style="align-items:flex-end">
+        <label class="field" style="flex:1;min-width:160px;margin:0"><span class="label">Сумма, AB</span><input class="input" name="amount" type="number" min="${v.rules.payoutMinAb}" step="10" value="${Math.max(v.rules.payoutMinAb, Math.min(me.balance, v.net) || v.rules.payoutMinAb)}" required></label>
+        <button class="btn btn-primary" type="submit" ${me.balance < v.rules.payoutMinAb ? 'disabled' : ''}>Вывести</button>
+      </form>
+      <p class="tiny muted" id="payout-kzt"></p>
+      ${v.payouts.length ? `<table class="table" style="margin-top:10px"><thead><tr><th>Дата</th><th class="r">Сумма</th><th>Статус</th></tr></thead><tbody>${v.payouts.map((p) => `<tr><td>${new Date(p.createdAt).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</td><td class="r">${fmt(p.amount)} AB<div class="tiny muted">${kzt(p.amountKzt)}</div></td><td>${statusLabel[p.status] || p.status}<div class="tiny muted">${esc(p.note || '')}</div></td></tr>`).join('')}</tbody></table>` : '<p class="tiny muted">Заявок на вывод пока нет.</p>'}
+    </section>
+  </div>`;
+  bindChart(D.app.querySelector('#rev-bars'), v.days, null, { count: ['продажа', 'продажи', 'продаж'], verb: 'выручки' });
+  const form = D.app.querySelector('#payout');
+  const upd = () => (D.app.querySelector('#payout-kzt').textContent = `≈ ${kzt((Number(form.amount.value) || 0) * v.rules.abToKzt)}`);
+  form.amount.addEventListener('input', upd);
+  upd();
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = form.querySelector('button');
+    btn.disabled = true;
+    try {
+      const r = await D.api('/api/company/payouts', { method: 'POST', body: { amount: Number(form.amount.value) }, idem: true });
+      D.state.me.balance = r.balance;
+      D.toast(`Заявка на вывод ${fmt(r.payout.amount)} AB (${kzt(r.payout.amountKzt)}) создана`);
+      viewRevenue();
+      D.renderChrome?.();
+    } catch (err) {
+      D.toast(err.message, { kind: 'err' });
+      btn.disabled = false;
+    }
+  });
+  D.enhance();
 }

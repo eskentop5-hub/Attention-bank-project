@@ -1,0 +1,176 @@
+/* ATTENTION BANK — тема «Советский космический плакат»: чёрный космос, солнечно-жёлтый,
+   красно-оранжевый, кремовая бумага, бирюза. Подключается после app.css и переопределяет переменные и компоненты. */
+
+:root {
+  --bg: #08080b;
+  --bg-2: #15110e;
+  --ink: #f3e8d2;
+  --ink-2: #d8cbb2;
+  --muted: #a3967f;
+  --canvas: #08080b;
+  --surface: rgba(18, 14, 12, 0.86);
+  --surface-solid: #16120f;
+  --sunk: rgba(243, 232, 210, 0.08);
+  --line: rgba(243, 232, 210, 0.14);
+  --line-strong: rgba(243, 232, 210, 0.28);
+  --sky: #59b5b1;
+  --sky-deep: #9ad8d2;
+  --sky-bright: #59b5b1;
+  --sky-wash: rgba(89, 181, 177, 0.16);
+  --gold: #f5c21b;
+  --gold-ink: #ffd54a;
+  --gold-wash: rgba(245, 194, 27, 0.15);
+  --red: #e0502c;
+  --red-wash: rgba(224, 80, 44, 0.16);
+  --ok: #8fd18a;
+  --ok-wash: rgba(143, 209, 138, 0.14);
+  --bad: #ff7a55;
+  --bad-wash: rgba(255, 122, 85, 0.15);
+  --wait: #f5b547;
+  --glass: none;
+  --edge: inset 0 0 0 1px rgba(243, 232, 210, 0.04);
+  --display: 'Russo One', 'Geologica', 'Segoe UI', system-ui, sans-serif;
+  --r-img: 6px;
+  --r-ctl: 4px;
+  --poster: 6px 6px 0 #000;
+  --poster-red: 6px 6px 0 var(--red);
+  --shadow-float: 8px 8px 0 #000;
+}
+
+/* ---------- Космос на фоне ---------- */
+html { background: var(--bg); }
+body { background: transparent; }
+.cosmos { position: fixed; inset: 0; z-index: -1; pointer-events: none; overflow: hidden; }
+.cosmos svg { width: 100%; height: 100%; }
+.cosmos .sun { animation: sunfloat 30s ease-in-out infinite alternate; transform-origin: 1330px 260px; }
+.cosmos .rockets g { animation: drift 14s ease-in-out infinite alternate; }
+.cosmos .tw { animation: twinkle 3.5s ease-in-out infinite; transform-box: fill-box; }
+@keyframes sunfloat { to { transform: translate(18px, 10px) scale(1.02); } }
+@keyframes drift { to { translate: 14px -10px; } }
+@keyframes twinkle { 0%, 100% { opacity: 0.2; } 50% { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .cosmos * { animation: none !important; } }
+
+/* ---------- Типографика плаката ---------- */
+h1, h2, h3, .deck-h1, .deck-h2, .store-h1, .brand { font-family: var(--display); font-weight: 400; letter-spacing: 0.01em; }
+h1, .deck-h1, .store-h1 { text-transform: uppercase; }
+.page-head h1 { text-shadow: 4px 4px 0 var(--red); }
+.deck-h1, .store-h1 { line-height: 0.95; text-shadow: 5px 5px 0 #000; }
+.deck-h1 span, .store-h1 span { background: none; -webkit-background-clip: initial; background-clip: initial; color: var(--gold); text-shadow: 5px 5px 0 var(--red); }
+.deck-h2 { text-transform: uppercase; line-height: 1.02; text-shadow: 4px 4px 0 #000; }
+.kicker { display: inline-block; color: var(--gold); letter-spacing: 0.16em; background: #08080b; padding: 5px 10px; box-shadow: 3px 3px 0 var(--red); }
+.kicker::before { content: '★ '; color: var(--red); }
+
+/* ---------- Шапка и навигация ---------- */
+.demo-ribbon { background: var(--red); color: #fff3e2; border: 0; font-weight: 600; letter-spacing: 0.02em; }
+.demo-ribbon b, .demo-ribbon strong { color: #08080b; }
+.topbar { background: rgba(8, 8, 11, 0.9); border-bottom: 2px solid var(--gold); }
+.brand span { text-transform: uppercase; letter-spacing: 0.06em; }
+.nav a { font-family: var(--display); text-transform: uppercase; font-size: 0.86rem; letter-spacing: 0.06em; border-radius: var(--r-ctl); }
+.nav a[aria-current='page'] { background: var(--gold); color: #08080b; box-shadow: 3px 3px 0 var(--red); }
+.tabbar { background: rgba(8, 8, 11, 0.95); border-top: 2px solid var(--gold); }
+.tabbar a[aria-current='page'] { color: var(--gold); }
+.balance-chip { border-radius: var(--r-ctl); background: var(--gold); color: #08080b; box-shadow: 3px 3px 0 var(--red); }
+.balance-chip .coin { background: #08080b; box-shadow: inset 0 0 0 3px var(--gold), 0 0 0 1.5px #08080b; }
+.streak-chip { border-radius: var(--r-ctl); background: var(--red); color: #fff3e2; box-shadow: 3px 3px 0 #000; }
+.streak-chip:hover { background: #f0603a; color: #fff; }
+.desk-btn { border-radius: var(--r-ctl) !important; }
+
+/* ---------- Кнопки: плоские плакатные блоки с жёсткой тенью ---------- */
+.btn { border-radius: var(--r-ctl); font-family: var(--display); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 400; box-shadow: 4px 4px 0 #000; border: 2px solid transparent; transition: transform 0.1s, box-shadow 0.1s, background-color 0.15s; }
+.btn:hover { transform: translate(-1px, -1px); box-shadow: 5px 5px 0 #000; }
+.btn:active { transform: translate(3px, 3px); box-shadow: 1px 1px 0 #000; }
+.btn-primary, .btn-gold { background: var(--gold); color: #08080b; box-shadow: 4px 4px 0 var(--red); }
+.btn-primary:hover, .btn-gold:hover { background: #ffd23a; color: #08080b; box-shadow: 5px 5px 0 var(--red); }
+.btn-accent { background: var(--red); color: #fff3e2; }
+.btn-ghost { background: rgba(8, 8, 11, 0.6); color: var(--ink); border-color: var(--ink); }
+.btn-ghost:hover { background: var(--ink); color: #08080b; }
+.btn-quiet { box-shadow: none; color: var(--gold); }
+.btn-quiet:hover { box-shadow: none; transform: none; }
+.btn:disabled, .btn[disabled] { box-shadow: none; transform: none; opacity: 0.5; }
+.deck-bar .btn, .chip { border-radius: var(--r-ctl); }
+
+/* ---------- Панели, карточки, поля ---------- */
+.panel, .ticket, .summary, .goal, .nudge, .kpis, .funnel, .pt, .deck-steps li, .dr, .dp, .soon, .kpi, .pulse-card, .specs div, .eco-mini div, .flow .node, .reward-card, .mascot-chat, .tour-card, dialog.modal {
+  background: var(--surface);
+  border: 1.5px solid var(--line-strong);
+  border-radius: var(--r-img);
+  box-shadow: var(--poster);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.reward-card { padding: 10px; }
+.reward-card .img, .product-img, .showcase, .slide-art, .deck-3d, .view3d { border-radius: var(--r-img); }
+.reward-card .img, .product-img, .deck-3d, .showcase .view3d, .hero-stage {
+  background:
+    radial-gradient(circle at 50% 46%, rgba(245, 194, 27, 0.32), rgba(224, 80, 44, 0.12) 42%, transparent 70%),
+    repeating-radial-gradient(circle at 50% 120%, transparent 0 22px, rgba(243, 232, 210, 0.05) 22px 23px),
+    #0d0b0a;
+  box-shadow: inset 0 0 0 1.5px var(--line-strong);
+}
+.kpi.gold, .store-balance { background: var(--gold); color: #08080b; border-color: #08080b; box-shadow: 6px 6px 0 var(--red); }
+.kpi.gold span, .kpi.gold em, .kpi.gold b small, .store-balance small { color: #3a2a08; }
+.store-balance .btn-primary { background: #08080b; color: var(--gold); box-shadow: 3px 3px 0 var(--red); }
+.input { border-radius: var(--r-ctl); background: rgba(8, 8, 11, 0.7); border: 1.5px solid var(--line-strong); }
+.input:focus { border-color: var(--gold); box-shadow: 3px 3px 0 var(--red); }
+.badge { border-radius: 3px; text-transform: uppercase; letter-spacing: 0.05em; font-size: 0.7rem; }
+.badge.demo { background: var(--ink); color: #08080b; box-shadow: none; }
+.badge.gold { background: var(--gold); color: #08080b; }
+.chip[aria-pressed='true'], .cats button[aria-pressed='true'] { background: var(--gold); color: #08080b; border-color: #08080b; box-shadow: 3px 3px 0 var(--red); }
+.meter { border-radius: 2px; }
+.meter i { background: repeating-linear-gradient(-45deg, var(--gold) 0 8px, #ffd54a 8px 16px); border-radius: 2px; }
+.cost small, .kpi b small { color: var(--red); }
+.plat-badge { border-radius: 3px; }
+.plat-badge.p-steam { background: #1e3a46; color: #bfe7ff; }
+.plat-badge.p-epic { background: var(--ink); color: #08080b; }
+.plat-badge.p-google_play { background: #2c4a2a; color: #c4f0b8; }
+.plat-badge.p-in_game { background: var(--gold); color: #08080b; }
+.plat-badge.p-web { background: var(--sky-wash); color: var(--sky-deep); }
+
+/* ---------- Презентация: каждый слайд — плакат ---------- */
+.slide-art { box-shadow: 10px 10px 0 var(--red); border: 2px solid var(--ink); }
+.deck-3d { box-shadow: none; }
+.deck-bar { background: rgba(8, 8, 11, 0.94); border: 2px solid var(--gold); border-radius: var(--r-img); box-shadow: 6px 6px 0 var(--red); }
+.deck-dots button { border-radius: 2px; }
+.deck-dots button[aria-selected='true'] { background: var(--red); }
+.deck-steps i { background: var(--red); color: #fff3e2; border-radius: 3px; font-family: var(--display); }
+.dp em, .dr .plat { color: var(--gold); }
+.slide.in .slide-art { animation: posterin 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes posterin { from { opacity: 0; transform: translate(30px, -20px) rotate(2deg); } }
+
+/* ---------- Графики и кольца ---------- */
+.chart .mk { fill: var(--gold); }
+.chart .bar.dim .mk { opacity: 0.3; }
+.ring .rv { stroke: var(--gold); stroke-linecap: butt; }
+.hbar i { background: var(--red); }
+.streak-big b { color: var(--red); text-shadow: 3px 3px 0 #000; }
+.week .on i { background: var(--red); box-shadow: none; }
+.treasury-check.ok { border-radius: var(--r-ctl); background: var(--ok); color: #08080b; box-shadow: 3px 3px 0 #000; }
+.flow .arrow::after { color: var(--red); }
+.flow .arrow b { color: var(--gold); }
+.calc input[type='range'] { accent-color: var(--red); }
+.calc-out div { border-radius: var(--r-ctl); }
+.calc-out b, .pulse-nums b { color: var(--gold); }
+
+/* ---------- Мелочи ---------- */
+.ava { border-radius: 4px; }
+.ava.has { box-shadow: 3px 3px 0 #000, inset 0 0 0 2px rgba(243, 232, 210, 0.3); }
+.ava-opt { border-radius: 6px; }
+.mascot-say { background: var(--ink); color: #08080b; border-radius: 4px; box-shadow: 4px 4px 0 var(--red); font-weight: 600; }
+.mascot-chat .m.me { background: var(--gold); color: #08080b; }
+.mascot-chat .m.bot { background: #1d1814; }
+.tour .spot { border-radius: 6px; box-shadow: 0 0 0 9999px rgba(5, 4, 3, 0.8), 0 0 0 3px var(--gold), 6px 6px 0 3px var(--red); }
+.toast { border-radius: var(--r-ctl); box-shadow: 5px 5px 0 #000; background: var(--ink); color: #08080b; }
+::selection { background: var(--red); color: #fff3e2; }
+:focus-visible { outline-color: var(--gold); }
+
+/* Читаемость: на рабочих страницах солнце и орбиты приглушены, в презентации и на витрине — во всю силу */
+.cosmos .sun, .cosmos .orbits { transition: opacity 0.6s; }
+body:not(:has(.deck)):not(:has(.store-hero)) .cosmos .sun { opacity: 0.28; }
+body:not(:has(.deck)):not(:has(.store-hero)) .cosmos .orbits { opacity: 0.45; }
+.product-info, .product > div:last-child { text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8); }
+@media (max-width: 760px) {
+  .deck .slide { padding-bottom: 96px; }
+  .deck-h1 { font-size: clamp(2.1rem, 11vw, 3rem); }
+  .deck-h2 { font-size: clamp(1.6rem, 8vw, 2.2rem); }
+  .page-head h1 { text-shadow: 3px 3px 0 var(--red); }
+}

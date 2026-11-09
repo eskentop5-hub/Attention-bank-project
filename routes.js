@@ -13,6 +13,7 @@ import { createLinkCode, unlinkTelegram, handleUpdate, webhookSecretToken } from
 import { telegramEnabled } from './telegram/api.js';
 import { recordVisit, streak, userStats, dailyChallenge } from './services/stats.js';
 import * as mascot from './services/mascot.js';
+import * as economy from './services/economy.js';
 import { AUTO_APPROVE_SCORE, AUTO_REJECT_SCORE, FLAG_INFO } from './services/verification.js';
 
 const routes = [];
@@ -274,6 +275,12 @@ POST('/api/company/deposit', { idempotent: true }, (ctx) => {
   const { balanceAfter } = postTransaction({ userId: c.id, amount, type: 'deposit', title: 'Пополнение бюджета (демо)' });
   return { balance: balanceAfter };
 });
+
+// Экономика v2: выручка продавца с наград и вывод в тенге
+GET('/api/company/revenue', (ctx) => economy.sellerRevenue(need(ctx, 'company').id));
+POST('/api/company/payouts', { idempotent: true }, (ctx) => economy.requestPayout(need(ctx, 'company'), ctx.body));
+// Публичная казна: прозрачность всей экономики (без персональных данных)
+GET('/api/economy', () => economy.treasury());
 
 GET('/api/company/rewards', (ctx) => ({ rewards: rewards.companyRewards(need(ctx, 'company').id) }));
 POST('/api/company/rewards', { idempotent: true }, (ctx) => ({ reward: rewards.createReward(need(ctx, 'company'), ctx.body) }));

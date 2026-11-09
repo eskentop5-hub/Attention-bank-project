@@ -15,6 +15,9 @@ const TX_KIND = {
   campaign_reserve: 'reserve',
   campaign_refund: 'refund',
   platform_fee: 'fee',
+  reward_sale: 'sale',
+  payout: 'payout',
+  bonus_paid: 'fee',
 };
 
 /**

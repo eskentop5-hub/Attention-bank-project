@@ -5,6 +5,7 @@ import { one, all, run, tx } from '../db.js';
 import { bad, forbidden, notFound, str, int, randomCode } from '../util.js';
 import { REWARD_CATEGORIES, isRewardCategory } from '../catalog.js';
 import { postTransaction } from './ledger.js';
+import { settleSale } from './economy.js';
 import { notify } from './notifications.js';
 
 export const PLATFORMS = ['steam', 'epic', 'google_play', 'app_store', 'in_game', 'web'];
@@ -126,6 +127,8 @@ export function redeem(user, rewardId) {
       refType: 'redemption',
       refId: Number(red.lastInsertRowid),
     });
+    // Баллы не сгорают: продавец получает выручку, платформа — комиссию с продажи
+    settleSale({ reward: r, redemptionId: Number(red.lastInsertRowid) });
     // Цель достигнута — снимаем её, чтобы человек выбрал следующую сам
     if (user.goal_reward_id === r.id) run('UPDATE users SET goal_reward_id = NULL WHERE id = ?', user.id);
     notify(user.id, {

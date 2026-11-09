@@ -6,7 +6,7 @@ import crypto from 'node:crypto';
 import { config } from '../config.js';
 import { one, all, run, tx, now } from '../db.js';
 import { call, sendMessage, escapeHtml, linkButton, telegramEnabled } from './api.js';
-import { postTransaction } from '../services/ledger.js';
+import { platformBonus } from '../services/economy.js';
 import { notify } from '../services/notifications.js';
 import { randomCode } from '../util.js';
 import { categoryLabel } from '../catalog.js';
@@ -48,8 +48,8 @@ export function linkAccount(code, chatId, username) {
     let bonus = 0;
     const already = one("SELECT id FROM transactions WHERE user_id = ? AND type = 'bonus' AND ref_type = 'telegram_verify'", user.id);
     if (firstTime && !already && config.telegram.verifyBonus > 0 && user.role === 'user') {
-      bonus = config.telegram.verifyBonus;
-      postTransaction({ userId: user.id, amount: bonus, type: 'bonus', title: 'Подтверждение аккаунта через Telegram', refType: 'telegram_verify', refId: user.id });
+      // Бонус платится из доходов платформы, а не печатается — экономика остаётся обеспеченной
+      bonus = platformBonus({ userId: user.id, amount: config.telegram.verifyBonus, title: 'Подтверждение аккаунта через Telegram', refType: 'telegram_verify', refId: user.id });
     }
     notify(user.id, {
       kind: 'telegram',

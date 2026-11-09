@@ -265,12 +265,17 @@ export async function seedDemo({ log = console.log } = {}) {
   // Меняются только даты демо-записей: суммы и баланс остаются согласованными с леджером.
   // Момент «d дней назад в h часов» по часовому поясу платформы
   const ago = (d, h = 12) => new Date(Date.parse(dayKey(Date.now() - d * 864e5) + 'T00:00:00Z') - config.tzOffsetMin * 60e3 + h * 3600e3).toISOString();
-  const demoTx = all('SELECT id, type FROM transactions WHERE user_id = ? ORDER BY id', demo.id);
+  const demoTx = all('SELECT id, type, ref_id FROM transactions WHERE user_id = ? ORDER BY id', demo.id);
   const rewardsTx = demoTx.filter((t) => t.type === 'task_reward');
   if (rewardsTx[0]) run('UPDATE transactions SET created_at = ? WHERE id = ?', ago(2, 15), rewardsTx[0].id);
   if (rewardsTx[1]) run('UPDATE transactions SET created_at = ? WHERE id = ?', ago(1, 13), rewardsTx[1].id);
   const red = demoTx.find((t) => t.type === 'redemption');
-  if (red) run('UPDATE transactions SET created_at = ? WHERE id = ?', ago(1, 19), red.id);
+  if (red) {
+    run('UPDATE transactions SET created_at = ? WHERE id = ?', ago(1, 19), red.id);
+    // Та же дата у самой продажи: запись обмена, выручка продавца и комиссия
+    run('UPDATE redemptions SET created_at = ? WHERE id = ?', ago(1, 19), red.ref_id);
+    run("UPDATE transactions SET created_at = ? WHERE ref_type = 'redemption' AND ref_id = ? AND type IN ('reward_sale', 'platform_fee')", ago(1, 19), red.ref_id);
+  }
   const demoSubs = all('SELECT id FROM assignments WHERE user_id = ? ORDER BY id', demo.id);
   demoSubs.forEach((a, i) => run('UPDATE assignments SET started_at = ?, submitted_at = ?, reviewed_at = ? WHERE id = ?', ago(2 - i, 12), ago(2 - i, 12.3), ago(2 - i, i ? 13 : 15), a.id));
   for (let d = 1; d <= 4; d++) run('INSERT OR IGNORE INTO user_visits (user_id, day) VALUES (?, ?)', demo.id, dayKey(Date.now() - d * 864e5));
