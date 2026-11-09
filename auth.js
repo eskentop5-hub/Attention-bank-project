@@ -81,3 +81,21 @@ export function publicUser(u) {
     createdAt: u.created_at,
   };
 }
+
+// ---------- Политика паролей (одинаковая для регистрации и смены пароля) ----------
+const COMMON = new Set(['password', 'password1', 'qwerty123', 'qwertyui', '12345678', '123456789', '1234567890', '11111111', '00000000', 'abc12345', 'iloveyou', 'qwerty12', '1q2w3e4r', '1qaz2wsx', 'zaq12wsx', 'passw0rd', 'admin123', 'welcome1', 'letmein1', 'parol123', 'qazwsx123', 'asdfghjk', 'zxcvbnm1', 'kazakhstan', 'almaty123', 'astana123', 'shymkent1']);
+/** Возвращает текст ошибки или null, если пароль подходит */
+export function passwordProblem(password, { email = '', name = '' } = {}) {
+  const p = String(password || '');
+  if (p.length < 8) return 'Пароль: минимум 8 символов';
+  if (p.length > 200) return 'Пароль слишком длинный';
+  if (p !== p.trim()) return 'Пароль не должен начинаться или заканчиваться пробелом';
+  if (!/\p{L}/u.test(p) || !/\d/.test(p)) return 'Пароль должен содержать и буквы, и цифры';
+  if (/^(.)\1+$/.test(p)) return 'Пароль из одного повторяющегося символа слишком простой';
+  if (COMMON.has(p.toLowerCase())) return 'Этот пароль слишком распространён — его легко угадать';
+  const local = String(email).split('@')[0].toLowerCase();
+  if (local.length >= 4 && p.toLowerCase().includes(local)) return 'Пароль не должен содержать ваш email';
+  const nm = String(name).trim().toLowerCase();
+  if (nm.length >= 4 && p.toLowerCase().includes(nm)) return 'Пароль не должен содержать ваше имя';
+  return null;
+}

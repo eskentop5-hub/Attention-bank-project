@@ -214,7 +214,7 @@ function barChart(days, { h = 220, id = 'bars', W = 1100 } = {}) {
   const bars = days
     .map((d, k) => {
       const x = padL + k * bw + 3, w = bw - 6, yy = y(d.earned), hh = Math.max(0, y(0) - yy);
-      return `<g class="bar" data-k="${k}" tabindex="0" role="img" aria-label="${dayShort(d.day)}: заработано ${d.earned} AB, потрачено ${d.spent} AB, заданий ${d.tasks}">
+      return `<g class="bar" data-k="${k}" style="--k:${k}" tabindex="0" role="img" aria-label="${dayShort(d.day)}: заработано ${d.earned} AB, потрачено ${d.spent} AB, заданий ${d.tasks}">
         <rect class="hit" x="${padL + k * bw}" y="${padT}" width="${bw}" height="${h - padT - padB}"/>
         ${hh > 0 ? `<path class="mk" d="M${x},${y(0)} V${yy + 4} Q${x},${yy} ${x + 4},${yy} H${x + w - 4} Q${x + w},${yy} ${x + w},${yy + 4} V${y(0)} Z"/>` : `<line class="zero" x1="${x}" x2="${x + w}" y1="${y(0) - 1}" y2="${y(0) - 1}"/>`}
         ${k % 2 === days.length % 2 || days.length <= 7 ? `<text x="${x + w / 2}" y="${h - 8}" class="ax" text-anchor="middle">${days.length <= 7 ? weekday(d.day) : dayShort(d.day)}</text>` : ''}
@@ -397,6 +397,8 @@ export function mountMascot() {
   mascot.el = el;
   mascot.x = Math.min(innerWidth - 120, 60 + Math.random() * 200);
   el.querySelector('.mascot-btn').onclick = () => openChat();
+  // При переходе на другую страницу чат закрывается: вопросы в нём зависят от страницы
+  addEventListener('hashchange', () => document.querySelector('.mascot-chat') && closeChat());
   if (!REDUCED) mascot.raf = requestAnimationFrame(walk);
   else el.style.transform = `translateX(${mascot.x}px)`;
   setTimeout(() => say(phrases()[0]), 2500);
@@ -446,6 +448,53 @@ function say(text) {
   mascot.bubbleT = setTimeout(() => (b.hidden = true), 5200);
 }
 
+// Диалоги Аби: только готовые реплики. Набор зависит от того, где открыт сайт/чат.
+const A = {
+  what: ['Что такое ATTENTION BANK?', 'Платформа, где компании честно платят за ваше внимание. Вы тестируете игры, прототипы и видео, ответ проверяется — и на баланс приходят AB Points. Их меняют на ключи игр, предметы и подписки.', ['free', 'get', 'start']],
+  free: ['Это бесплатно?', 'Да. Участник ничего не платит. Платят компании — и только за проверенный результат.', ['money', 'start']],
+  get: ['Что можно получить?', 'Ключи игр для Steam, Epic Games и Google Play, внутриигровые предметы, подписки и признание от студий. Каталог — на главной после входа.', ['money', 'kaspi']],
+  real: ['Игры в заданиях настоящие?', 'Да. Steppe Runner, прототип Qadam, A/B-инвентарь и видео работают прямо в браузере. Студии демонстрационные, а продукты — настоящие. Их можно попробовать даже без регистрации.', ['start', 'what']],
+  start: ['С чего начать?', 'Нажмите «Создать аккаунт», выберите интересы — и я проведу короткий тур по разделам. Займёт минуту.', ['free']],
+  money: ['Можно вывести AB в тенге?', 'Участникам — нет: AB Points не деньги, их только обменивают на награды. Зато каждый балл обеспечен деньгами компаний, поэтому он не «пустой». Выводить выручку в тенге могут только продавцы наград по договору.', ['eco', 'get']],
+  kaspi: ['А Kaspi или YouTube Premium будут?', 'Хотим подключить, но договоров пока нет. Поэтому такие награды показаны в разделе «Хотим подключить» и их нельзя обменять — мы не обещаем то, чего нет.', ['get']],
+  eco: ['Как устроена экономика?', 'Компании пополняют бюджет (1 AB = 10 ₸) и платят за одобренные ответы + 20% платформе. Когда вы обмениваете AB на награду, баллы не сгорают: 90% получает продавец, 10% — платформа. Живые цифры — на странице «Экономика».', ['check', 'money']],
+  check: ['Почему экономике можно верить?', 'Сервер постоянно сверяет: все балансы + резервы кампаний = пополнения − выводы. Если хоть 1 AB не сойдётся, на странице «Экономика» загорится предупреждение.', ['eco']],
+  redeem: ['Как получить награду?', 'Откройте награду и нажмите «Получить». Баллы спишутся одной транзакцией, код сразу появится на экране и в разделе «Мои награды».', ['where', 'goal', 'stock']],
+  where: ['Где активировать ключ?', 'Площадка указана на карточке: Steam — «Активировать в Steam», Epic — «Активировать код», Google Play — «Промокод». Инструкция есть на странице награды.', ['redeem']],
+  goal: ['Зачем «Сделать целью»?', 'Цель появится на главной с полосой прогресса и заданиями, которые быстрее всего к ней приведут.', ['redeem', 'tasks']],
+  stock: ['Почему у наград есть остаток?', 'Студии выдают ограниченное число ключей и предметов. Если остаток 0 — награду нельзя получить, мы её так и показываем.', ['redeem']],
+  tasks: ['Как выполнить задание?', 'Нажмите «Начать», откройте продукт кнопкой «Открыть продукт», пройдите его и ответьте на вопросы. Время и награда видны заранее.', ['verify', 'attention', 'reject']],
+  verify: ['Как проверяют ответы?', 'Автопроверка смотрит время выполнения, осмысленность текста, дубликаты и контрольные вопросы. Хорошие ответы в некоторых заданиях одобряются сразу, остальные смотрит компания.', ['reject', 'attention']],
+  attention: ['Что за контрольный вопрос?', 'Это проверка внимания: например, слово, которое появляется в середине трейлера. Правильный ответ знает только тот, кто действительно посмотрел.', ['video']],
+  video: ['Как пройти видео-тест?', 'Посмотрите ролик целиком без перемотки: плеер считает реально просмотренную часть. Запомните контрольное слово и ответьте на вопросы.', ['attention']],
+  reject: ['Почему ответ могут отклонить?', 'Слишком быстро, коротко, скопировано или неверный контрольный вопрос. Причина всегда видна в «Активности». Подробные честные ответы одобряют быстрее.', ['verify']],
+  balance: ['Откуда мой баланс?', 'Только из одобренных заданий и бонусов платформы. Баланс всегда равен сумме ваших транзакций — это проверяется автоматически.', ['redeem', 'streak']],
+  streak: ['Что значит огонёк 🔥?', 'Серия: сколько дней подряд вы заходите. Пропустите день — начнётся заново. Баллов за неё нет, это ваша личная мотивация.', ['challenge', 'stats']],
+  challenge: ['Что за челлендж дня?', 'Выполнить несколько заданий за день. Прогресс виден на главной и в статистике. Бонуса нет: баллы платят только компании за результат.', ['streak']],
+  stats: ['Что показывает статистика?', 'Сколько вы заработали сегодня, вчера и позавчера, график за 14 дней, лучший день, процент одобрения и сколько AB приносит час внимания.', ['abhour', 'streak']],
+  abhour: ['Что такое «AB за час внимания»?', 'Сколько баллов в среднем приносит час, потраченный на задания. Помогает понять, какие задания выгоднее.', ['stats']],
+  tg: ['Зачем привязывать Telegram?', 'Бот пришлёт уведомление сразу после проверки, а подтверждённый аккаунт открывает задания с пометкой «нужен Telegram».', ['password']],
+  password: ['Как сменить пароль?', 'Настройки → «Сменить пароль». Нужно ввести текущий пароль. После смены другие устройства выйдут из аккаунта.', ['export']],
+  export: ['Можно забрать свои данные?', 'Да. Настройки → «Мои данные» — профиль, ответы, транзакции и коды наград одним файлом.', ['tg']],
+  avatar: ['Как поменять аватар?', 'Профиль → нажмите на аватар и выберите один из 12 вариантов.', ['tg']],
+  campaign: ['Как создать кампанию?', 'Раздел «Создать»: описание, ссылка на продукт, награда участнику и вопросы. Для видео добавьте контрольный вопрос с правильным ответом.', ['pay', 'revenue']],
+  pay: ['За что платит компания?', 'Только за одобренные ответы: награда участнику + 20% платформе. Бюджет резервируется при запуске, неиспользованное возвращается.', ['campaign']],
+  revenue: ['Как заработать на наградах?', 'Добавьте ключи своей игры или предметы. Каждый обмен приносит вам 90% стоимости в AB — их можно вывести в тенге или вложить в новые тесты.', ['payout', 'eco']],
+  payout: ['Как вывести выручку?', 'Раздел «Выручка» → «Вывести», от 500 AB по курсу 1 AB = 10 ₸. В демо-версии создаётся заявка, деньги не переводятся.', ['revenue']],
+};
+function chatMenu() {
+  const h = location.hash || '#/';
+  const me = D.state.me;
+  if (!me) return h.startsWith('#/economy') ? ['eco', 'check', 'money', 'what'] : ['what', 'free', 'get', 'real', 'start'];
+  if (me.role === 'company') return h.includes('revenue') || h.startsWith('#/economy') ? ['revenue', 'payout', 'eco', 'check'] : ['campaign', 'pay', 'attention', 'revenue'];
+  if (h.startsWith('#/rewards')) return ['redeem', 'where', 'goal', 'stock', 'kaspi'];
+  if (h.startsWith('#/tasks')) return ['tasks', 'verify', 'attention', 'video', 'reject'];
+  if (h.startsWith('#/stats') || h.startsWith('#/activity')) return ['stats', 'abhour', 'streak', 'challenge'];
+  if (h.startsWith('#/profile') || h.startsWith('#/settings')) return ['tg', 'password', 'avatar', 'export'];
+  if (h.startsWith('#/economy')) return ['eco', 'check', 'money'];
+  return ['balance', 'redeem', 'streak', 'challenge', 'money'];
+}
+
 function openChat() {
   if (document.querySelector('.mascot-chat')) return closeChat();
   mascot.open = true;
@@ -454,49 +503,44 @@ function openChat() {
   panel.className = 'mascot-chat';
   panel.setAttribute('role', 'dialog');
   panel.setAttribute('aria-label', 'Чат с маскотом Аби');
-  const quick = D.state.me ? ['Как получить ключ Steam?', 'Почему ответ отклонили?', 'Что такое серия 🔥?', 'Можно вывести AB в тенге?'] : ['Что такое ATTENTION BANK?', 'Это бесплатно?', 'Что можно получить?', 'Игры настоящие?'];
-  panel.innerHTML = `<header><span class="mini">${MASCOT_SVG}</span><div><b>Аби</b><small id="m-src">маскот ATTENTION BANK</small></div><button type="button" class="x" aria-label="Закрыть">✕</button></header>
+  panel.innerHTML = `<header><span class="mini">${MASCOT_SVG}</span><div><b>Аби</b><small>выберите вопрос</small></div><button type="button" class="x" aria-label="Закрыть">✕</button></header>
     <div class="msgs" aria-live="polite"></div>
-    <div class="quick">${quick.map((q) => `<button type="button">${esc(q)}</button>`).join('')}</div>
-    <form><input class="input" maxlength="500" placeholder="Спросите что-нибудь…" aria-label="Ваш вопрос" autocomplete="off"><button class="btn btn-primary" type="submit">→</button></form>`;
+    <div class="choices" role="group" aria-label="Вопросы"></div>`;
   document.body.append(panel);
-  const msgs = panel.querySelector('.msgs');
-  const add = (who, text, src) => {
-    mascot.chat.push({ who, text, src });
-    msgs.insertAdjacentHTML('beforeend', `<div class="m ${who}">${esc(text)}${src ? `<small>${src === 'ai' ? 'ответ ИИ (Claude)' : 'из базы знаний'}</small>` : ''}</div>`);
-    msgs.scrollTop = msgs.scrollHeight;
+  const msgs = panel.querySelector('.msgs'), choices = panel.querySelector('.choices');
+  const bubble = (who, text) => {
+    const el = document.createElement('div');
+    el.className = `m ${who}`;
+    el.textContent = text;
+    msgs.append(el);
+    msgs.scrollTo({ top: msgs.scrollHeight, behavior: REDUCED ? 'auto' : 'smooth' });
+    return el;
   };
-  if (!mascot.chat.length) add('bot', D.state.me ? `Привет, ${D.state.me.role === 'company' ? D.state.me.companyName : D.state.me.name}! Чем помочь?` : 'Сәлем! Я Аби. Спросите про платформу — отвечу.');
-  else for (const m of mascot.chat) msgs.insertAdjacentHTML('beforeend', `<div class="m ${m.who}">${esc(m.text)}${m.src ? `<small>${m.src === 'ai' ? 'ответ ИИ (Claude)' : 'из базы знаний'}</small>` : ''}</div>`);
-  msgs.scrollTop = msgs.scrollHeight;
-  const ask = async (q) => {
-    if (!q.trim()) return;
-    add('me', q);
-    const typing = document.createElement('div');
-    typing.className = 'm bot typing';
+  const menu = chatMenu();
+  const showChoices = (ids) => {
+    const list = [...new Set(ids)].filter((id) => A[id]);
+    choices.innerHTML = list.map((id, k) => `<button type="button" data-q="${id}" style="--i:${k}">${esc(A[id][0])}</button>`).join('') + (ids === menu ? '' : `<button type="button" class="back" data-q="__menu" style="--i:${list.length}">↺ Другие вопросы</button>`);
+    choices.querySelectorAll('button').forEach((b) => (b.onclick = () => pick(b.dataset.q)));
+  };
+  const pick = (id) => {
+    if (id === '__menu') return showChoices(menu);
+    const [q, a, next] = A[id];
+    choices.innerHTML = '';
+    bubble('me', q);
+    const typing = bubble('bot typing', '');
     typing.innerHTML = '<i></i><i></i><i></i>';
-    msgs.append(typing);
-    msgs.scrollTop = msgs.scrollHeight;
-    try {
-      const r = await D.api('/api/mascot/ask', { method: 'POST', body: { question: q, page: location.hash } });
+    setTimeout(() => {
       typing.remove();
-      add('bot', r.answer, r.source);
-    } catch (e) {
-      typing.remove();
-      add('bot', e.message || 'Не получилось ответить. Попробуйте ещё раз.');
-    }
+      bubble('bot', a);
+      showChoices(next);
+    }, REDUCED ? 0 : 550);
   };
-  panel.querySelector('form').onsubmit = (e) => {
-    e.preventDefault();
-    const inp = panel.querySelector('input');
-    const q = inp.value;
-    inp.value = '';
-    ask(q);
-  };
-  panel.querySelectorAll('.quick button').forEach((b) => (b.onclick = () => ask(b.textContent)));
+  const me = D.state.me;
+  bubble('bot', me ? `${me.role === 'company' ? 'Здравствуйте' : 'Привет'}, ${me.role === 'company' ? me.companyName : me.name}! Выберите вопрос — отвечу.` : 'Сәлем! Я Аби. Выберите вопрос — расскажу.');
+  showChoices(menu);
   panel.querySelector('.x').onclick = closeChat;
   panel.addEventListener('keydown', (e) => e.key === 'Escape' && closeChat());
-  panel.querySelector('input').focus();
+  choices.querySelector('button')?.focus();
 }
 function closeChat() {
   document.querySelector('.mascot-chat')?.remove();
@@ -709,4 +753,54 @@ export async function viewRevenue() {
     }
   });
   D.enhance();
+}
+
+// ===================================================================
+//      ПЛАВНЫЕ АНИМАЦИИ: появление при прокрутке и счётчики чисел
+// ===================================================================
+const REVEAL = '.panel, .reward-card, .ticket, .kpi, .pt, .dp, .dr, .soon, .specs > div, .flow .node, .flow .arrow, .deck-steps li, .eco-mini > div, .pulse-card, .goal, .nudge, .section-head, .kpis, .summary, .funnel, .feed > *, .store-balance, .showcase';
+let io = null;
+function countUp(el) {
+  // Анимируем только первое число в первом текстовом узле, остальной текст не трогаем
+  const node = [...el.childNodes].find((n) => n.nodeType === 3 && /\d/.test(n.textContent));
+  if (!node) return;
+  const m = node.textContent.match(/^([^\d−-]*)([−-]?)([\d\s ]+)(.*)$/s);
+  if (!m) return;
+  const target = Number(m[3].replace(/[\s ]/g, ''));
+  if (!Number.isFinite(target) || target < 2) return;
+  const t0 = performance.now(), dur = Math.min(1100, 400 + target * 2);
+  const step = (t) => {
+    const k = Math.min(1, (t - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+    node.textContent = `${m[1]}${m[2]}${Math.round(target * e).toLocaleString('ru-RU')}${m[4]}`;
+    if (k < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
+}
+export function reveal(root = document) {
+  if (REDUCED || !('IntersectionObserver' in window)) return;
+  io ||= new IntersectionObserver(
+    (entries) => {
+      for (const en of entries) {
+        if (!en.isIntersecting) continue;
+        const el = en.target;
+        io.unobserve(el);
+        el.classList.add('rv-in');
+        // После появления убираем служебные классы, чтобы наведение реагировало без задержки
+        const d = parseInt(el.style.getPropertyValue('--rv-d')) || 0;
+        setTimeout(() => el.classList.remove('rv', 'rv-in'), 700 + d);
+        el.querySelectorAll(':scope .kpi b, :scope > b.num, :scope .store-balance b').forEach(countUp);
+        if (el.matches('.kpi')) el.querySelectorAll('b').forEach(countUp);
+        if (el.matches('.store-balance')) el.querySelectorAll('b').forEach(countUp);
+      }
+    },
+    { rootMargin: '0px 0px -6% 0px', threshold: 0.08 }
+  );
+  root.querySelectorAll(REVEAL).forEach((el) => {
+    if (el.classList.contains('rv')) return;
+    // Задержка по порядку среди соседей — «лесенка»
+    const sibs = el.parentElement ? [...el.parentElement.children].filter((c) => c.matches(REVEAL)) : [el];
+    el.style.setProperty('--rv-d', `${Math.min(8, sibs.indexOf(el)) * 60}ms`);
+    el.classList.add('rv');
+    io.observe(el);
+  });
 }

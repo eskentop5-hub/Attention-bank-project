@@ -1,6 +1,6 @@
 // Service Worker: PWA-установка и офлайн-оболочка.
 // API никогда не кэшируется — баланс и задания всегда свежие с сервера.
-const CACHE = 'ab-shell-v7';
+const CACHE = 'ab-shell-v8';
 const SHELL = ['/', '/index.html', '/css/app.css', '/css/retro.css', '/js/app.js', '/js/ab3d.js', '/js/extras.js', '/icons/logo.svg', '/icons/icon-192.png', '/manifest.webmanifest', '/img/rewards/cat-game_access.svg'];
 
 self.addEventListener('install', (e) => {
@@ -18,9 +18,9 @@ self.addEventListener('fetch', (e) => {
   if (e.request.method !== 'GET' || url.origin !== location.origin || url.pathname.startsWith('/api/')) return;
   // Сначала сеть, при отсутствии сети — кэш
   e.respondWith(
-    fetch(e.request)
+    (e.request.mode === 'navigate' ? fetch(e.request) : fetch(e.request, { cache: 'no-cache' }))
       .then((res) => {
-        if (res.ok) {
+        if (res.status === 200 && !url.pathname.endsWith('.mp4')) {
           const copy = res.clone();
           caches.open(CACHE).then((c) => c.put(e.request, copy));
         }

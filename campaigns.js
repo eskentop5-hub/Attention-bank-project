@@ -6,6 +6,7 @@ import { config } from '../config.js';
 import { bad, forbidden, notFound, str, int, url, parseJson, HttpError } from '../util.js';
 import { CATEGORIES, QUESTION_TYPES, categoryLabel, isCategory, cleanInterests } from '../catalog.js';
 import { postTransaction } from './ledger.js';
+const escHtml = (v) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 import { notify } from './notifications.js';
 import { validateAnswers, scoreSubmission, userTrust, FLAG_INFO, AUTO_APPROVE_SCORE, AUTO_REJECT_SCORE } from './verification.js';
 import { postCampaignToGroup } from '../telegram/group.js';
@@ -278,7 +279,11 @@ export function submitTask(user, id, rawAnswers) {
         title: 'Новый результат на проверку',
         body: `«${c.title}»: участник отправил ответ (качество ${score}/100).`,
         link: `/#/company/campaigns/${c.id}`,
-        telegram: `📥 <b>Новый результат на проверку</b>\n«${c.title}» — качество ${score}/100`,
+        telegram: `📥 <b>Новый результат на проверку</b>\n«${c.title}» — качество ${score}/100${flags.length ? `\n⚠️ ${flags.map((f) => FLAG_INFO[f].label).join(', ')}` : ''}\n\n${questions
+          .map((q) => `<b>${escHtml(q.label)}</b>\n${escHtml(String(answers[q.id] ?? '—')).slice(0, 300)}`)
+          .join('\n\n')}`,
+        // Решение прямо в Telegram: кнопки «Одобрить / Отклонить»
+        telegramExtra: { reply_markup: { inline_keyboard: [[{ text: '✅ Одобрить', callback_data: `rv:${a.id}:approve` }, { text: '❌ Отклонить', callback_data: `rv:${a.id}:reject` }]] } },
       });
     }
     return { outcome, score, flags };
@@ -326,6 +331,16 @@ function decide(assignmentId, c, decision, { rating = null, note = null, by = 'c
       link: '/#/wallet',
       telegram: `🎉 <b>+${c.reward} AB Points</b>\nYour task was approved.\n«${c.title}»\nNew balance: <b>${balanceAfter} AB</b>`,
     });
+    // Хватает на цель — сообщаем один раз, в момент когда баланс её достиг
+    const goal = one('SELECT r.id, r.title, r.cost FROM users u JOIN rewards r ON r.id = u.goal_reward_id WHERE u.id = ? AND r.active = 1 AND r.stock > 0', a.user_id);
+    if (goal && balanceAfter >= goal.cost && balanceAfter - c.reward < goal.cost)
+      notify(a.user_id, {
+        kind: 'goal',
+        title: 'Хватает на вашу цель!',
+        body: `На балансе ${balanceAfter} AB — можно получить «${goal.title}» за ${goal.cost} AB.`,
+        link: `/#/rewards/${goal.id}`,
+        telegram: `🎯 <b>Хватает на цель!</b>\n«${goal.title}» — ${goal.cost} AB\nНа балансе: <b>${balanceAfter} AB</b>`,
+      });
   } else {
     run(
       "UPDATE assignments SET status = 'rejected', quality_rating = ?, review_note = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?",

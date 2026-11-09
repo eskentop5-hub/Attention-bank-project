@@ -58,16 +58,16 @@ const user2 = client();
 let campaignId, rewardId;
 
 test('регистрация компании и участника', async () => {
-  let r = await company('POST', '/api/auth/register', { role: 'company', email: 'c@test.kz', password: 'password1', name: 'Данияр', companyName: 'Test Studio', consent: true });
+  let r = await company('POST', '/api/auth/register', { role: 'company', email: 'c@test.kz', password: 'Testpass42', name: 'Данияр', companyName: 'Test Studio', consent: true });
   assert.equal(r.status, 200);
   assert.equal(r.data.user.role, 'company');
 
-  r = await user('POST', '/api/auth/register', { email: 'u@test.kz', password: 'password1', name: 'Айгерим', consent: true });
+  r = await user('POST', '/api/auth/register', { email: 'u@test.kz', password: 'Testpass42', name: 'Айгерим', consent: true });
   assert.equal(r.status, 400, 'без подтверждения возраста регистрация запрещена');
 
-  r = await user('POST', '/api/auth/register', { email: 'u@test.kz', password: 'password1', name: 'Айгерим', consent: true, ageConfirmed: true });
+  r = await user('POST', '/api/auth/register', { email: 'u@test.kz', password: 'Testpass42', name: 'Айгерим', consent: true, ageConfirmed: true });
   assert.equal(r.status, 200);
-  r = await user2('POST', '/api/auth/register', { email: 'u2@test.kz', password: 'password1', name: 'Арман', consent: true, ageConfirmed: true });
+  r = await user2('POST', '/api/auth/register', { email: 'u2@test.kz', password: 'Testpass42', name: 'Арман', consent: true, ageConfirmed: true });
   assert.equal(r.status, 200);
 
   r = await user('PUT', '/api/me', { interests: ['mobile_games', 'unknown_interest'], balance: 999999, role: 'company' });
@@ -279,7 +279,7 @@ const us3 = clientWithKey();
 let camp2, reward2;
 
 test('v2: идемпотентность — повтор пополнения не начисляет дважды', async () => {
-  await co2('POST', '/api/auth/register', { role: 'company', email: 'c2@test.kz', password: 'password1', name: 'Мадина', companyName: 'Studio 2', consent: true });
+  await co2('POST', '/api/auth/register', { role: 'company', email: 'c2@test.kz', password: 'Testpass42', name: 'Мадина', companyName: 'Studio 2', consent: true });
   let r = await co2('POST', '/api/company/deposit', { amount: 2000 }, 'dep-key-0001');
   assert.equal(r.data.balance, 2000);
   r = await co2('POST', '/api/company/deposit', { amount: 2000 }, 'dep-key-0001');
@@ -335,7 +335,7 @@ test('v2: редактирование кампании — места, бюдж
 });
 
 test('v2: доказательство-ссылка валидируется, вопросы блокируются после ответа', async () => {
-  await us3('POST', '/api/auth/register', { email: 'u3@test.kz', password: 'password1', name: 'Дана', consent: true, ageConfirmed: true });
+  await us3('POST', '/api/auth/register', { email: 'u3@test.kz', password: 'Testpass42', name: 'Дана', consent: true, ageConfirmed: true });
   await us3('POST', `/api/tasks/${camp2.id}/start`, {});
   let r = await us3('POST', `/api/tasks/${camp2.id}/submit`, { answers: { q1: 'Экран выбора предметов непонятный', q2: 'javascript:alert(1)' } }, 'sub-key-0001');
   assert.equal(r.status, 400);
@@ -458,7 +458,7 @@ test('v5: контрольный вопрос — правильный отве�
   assert.equal(r.data.campaign.questions[0].correct, 'Б', 'компания видит правильный ответ');
 
   const u3 = client();
-  await u3('POST', '/api/auth/register', { email: 'u5@test.kz', password: 'password1', name: 'Ерлан', consent: true, ageConfirmed: true });
+  await u3('POST', '/api/auth/register', { email: 'u5@test.kz', password: 'Testpass42', name: 'Ерлан', consent: true, ageConfirmed: true });
   r = await u3('GET', `/api/tasks/${cid}`);
   assert.equal(r.data.task.questions[0].correct, undefined, 'участник не видит правильный ответ');
   assert.equal(r.data.task.questions[0].check, true);
@@ -543,4 +543,125 @@ test('экономика v2: продажа награды платит прод
   t = await (await fetch(`${base}/api/economy`)).json();
   assert.equal(t.ok, true, 'после вывода казна по-прежнему сходится');
   assert.equal(t.payouts, 500);
+});
+
+test('пароли: политика при регистрации, подтверждение, смена с проверкой текущего', async () => {
+  const c = client();
+  const reg = (password, extra = {}) => c('POST', '/api/auth/register', { email: 'pwuser@test.kz', password, name: 'Данияр', consent: true, ageConfirmed: true, ...extra });
+  assert.match((await reg('short1')).data.error, /минимум 8/);
+  assert.match((await reg('onlyletters')).data.error, /буквы, и цифры/);
+  assert.match((await reg('password1')).data.error, /распространён/);
+  assert.match((await reg('pwuser2024')).data.error, /email/i);
+  assert.match((await reg('Goodpass77', { passwordConfirm: 'Goodpass78' })).data.error, /не совпадают/);
+  let r = await reg('Goodpass77', { passwordConfirm: 'Goodpass77' });
+  assert.equal(r.status, 200);
+
+  r = await c('POST', '/api/me/password', { current: 'wrong', next: 'Newpass99' });
+  assert.match(r.data.error, /Текущий пароль неверный/);
+  r = await c('POST', '/api/me/password', { current: 'Goodpass77', next: '12345678' });
+  assert.equal(r.status, 400);
+  r = await c('POST', '/api/me/password', { current: 'Goodpass77', next: 'Newpass99', confirm: 'Newpass99' });
+  assert.equal(r.status, 200);
+  // Выход и повторный вход в тот же профиль с новым паролем
+  await c('POST', '/api/auth/logout', {});
+  assert.equal((await c('GET', '/api/me')).data.user, null);
+  assert.equal((await c('POST', '/api/auth/login', { email: 'pwuser@test.kz', password: 'Goodpass77' })).status, 400, 'старый пароль больше не подходит');
+  r = await c('POST', '/api/auth/login', { email: 'PWUSER@test.kz', password: 'Newpass99' });
+  assert.equal(r.status, 200, 'повторный вход в тот же профиль');
+  assert.equal((await c('GET', '/api/me')).data.user.email, 'pwuser@test.kz');
+});
+
+test('Telegram v2: Mini App вход по подписи, задание в чате, одобрение кнопкой, напоминание, /stats', async () => {
+  const crypto = await import('node:crypto');
+  const { verifyInitData, sendReminders } = await import('../server/telegram/features.js');
+  const { one: q, run: exec } = await import('../server/db.js');
+  const sign = (tgUser, ageSec = 0) => {
+    const p = new URLSearchParams({ auth_date: String(Math.floor(Date.now() / 1000) - ageSec), query_id: 'AAE', user: JSON.stringify(tgUser) });
+    const dcs = [...p.entries()].sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, v]) => `${k}=${v}`).join('\n');
+    const secret = crypto.createHmac('sha256', 'WebAppData').update('test-token').digest();
+    p.set('hash', crypto.createHmac('sha256', secret).update(dcs).digest('hex'));
+    return p.toString();
+  };
+  // Подпись: верная принимается, подделанная и просроченная — нет
+  assert.equal(verifyInitData(sign({ id: 555, first_name: 'A' })).id, 555);
+  assert.equal(verifyInitData(sign({ id: 555 }).replace('555', '556')), null, 'подмена данных ломает подпись');
+  assert.equal(verifyInitData(sign({ id: 555 }, 3 * 86400)), null, 'просроченные данные');
+
+  // Mini App: привязанный Telegram входит без пароля, неизвестный — получает linked:false
+  const tgc = client();
+  let r = await tgc('POST', '/api/telegram/webapp-login', { initData: sign({ id: 555 }) });
+  assert.equal(r.data.linked, true);
+  assert.equal((await tgc('GET', '/api/me')).data.user.email, 'u@test.kz');
+  r = await tgc('POST', '/api/telegram/webapp-login', { initData: 'hash=00&user=%7B%7D' });
+  assert.equal(r.status, 403);
+  const fresh = client();
+  r = await fresh('POST', '/api/telegram/webapp-login', { initData: sign({ id: 9001, first_name: 'Нурлан' }) });
+  assert.equal(r.data.linked, false);
+  // Новый пользователь регистрируется в Mini App — Telegram привязывается по подписи, без кода
+  await fresh('POST', '/api/auth/register', { email: 'tg@test.kz', password: 'Steppe2024x', name: 'Нурлан', consent: true, ageConfirmed: true });
+  r = await fresh('POST', '/api/telegram/webapp-link', { initData: sign({ id: 9001, username: 'nurlan' }) });
+  assert.equal(r.status, 200);
+  assert.equal((await fresh('GET', '/api/me')).data.user.telegram.linked, true);
+  r = await user2('POST', '/api/telegram/webapp-link', { initData: sign({ id: 9001 }) });
+  assert.equal(r.status, 400, '1 Telegram = 1 аккаунт');
+
+  // Компания подключает Telegram, чтобы проверять ответы кнопками
+  const { data: cc } = await company('POST', '/api/telegram/link-code', {});
+  await handleUpdate({ message: { chat: { id: 777, type: 'private' }, text: `/start ${cc.code}` } });
+  r = await company('POST', '/api/company/campaigns', {
+    title: 'Опрос в Telegram',
+    description: 'Короткий опрос о мобильных играх прямо в чате бота.',
+    category: 'game_feedback',
+    reward: 20,
+    maxParticipants: 5,
+    minSeconds: 0,
+    questions: [
+      { type: 'rating', label: 'Как часто играете?' },
+      { type: 'choice', label: 'Платформа?', options: ['Телефон', 'ПК'] },
+      { type: 'text', label: 'Любимая игра и почему?', minLength: 15 },
+    ],
+  });
+  const cid = r.data.campaign.id;
+
+  // Участник проходит задание прямо в чате
+  sent.length = 0;
+  const cb = (data, chat = 555) => handleUpdate({ callback_query: { id: 'q', data, message: { chat: { id: chat }, message_id: 1 } } });
+  await handleUpdate({ message: { chat: { id: 555, type: 'private' }, text: '/tasks' } });
+  assert.ok(sent.some((m) => m.method === 'sendMessage' && JSON.stringify(m.reply_markup || {}).includes(`t:${cid}`)), 'кнопка задания');
+  await cb(`t:${cid}`);
+  await cb(`a:${cid}:0:4`);
+  await cb(`a:${cid}:1:0`);
+  await handleUpdate({ message: { chat: { id: 555, type: 'private' }, text: 'коротко' } });
+  assert.ok(sent.some((m) => /Слишком коротко/.test(m.text || '')));
+  sent.length = 0;
+  await handleUpdate({ message: { chat: { id: 555, type: 'private' }, text: 'Steppe Runner — короткие заезды и красивая степь' } });
+  await tick();
+  const a = q('SELECT a.* FROM assignments a JOIN users u ON u.id = a.user_id WHERE a.campaign_id = ? AND u.email = ?', cid, 'u@test.kz');
+  assert.equal(a.status, 'submitted');
+  assert.deepEqual(Object.values(JSON.parse(a.answers)).slice(0, 2), [4, 'Телефон']);
+  const toCompany = sent.find((m) => m.chat_id === '777' && /Новый результат/.test(m.text || ''));
+  assert.ok(toCompany && JSON.stringify(toCompany.reply_markup).includes(`rv:${a.id}:approve`), 'компании пришли кнопки решения');
+
+  // Компания одобряет кнопкой — участник получает баллы через леджер
+  const before = q("SELECT balance FROM users WHERE email = 'u@test.kz'").balance;
+  await cb(`rv:${a.id}:approve`, 777);
+  assert.equal(q('SELECT status FROM assignments WHERE id = ?', a.id).status, 'approved');
+  assert.equal(q("SELECT balance FROM users WHERE email = 'u@test.kz'").balance, before + 20);
+  await cb(`rv:${a.id}:approve`, 555);
+  assert.equal(q('SELECT status FROM assignments WHERE id = ?', a.id).status, 'approved', 'участник не может проверять');
+
+  // /stats
+  sent.length = 0;
+  await handleUpdate({ message: { chat: { id: 555, type: 'private' }, text: '/stats' } });
+  assert.ok(sent.some((m) => /Статистика/.test(m.text || '') && /Серия/.test(m.text || '')));
+
+  // Напоминание: тем, кто сегодня не заходил; отключается кнопкой
+  exec("DELETE FROM user_visits WHERE user_id = (SELECT id FROM users WHERE email = 'u@test.kz')");
+  sent.length = 0;
+  assert.ok((await sendReminders({ force: true })) >= 1);
+  assert.ok(sent.some((m) => m.chat_id === '555' && /серию|Серия/.test(m.text || '')));
+  await cb('rm:off');
+  sent.length = 0;
+  await sendReminders({ force: true });
+  assert.ok(!sent.some((m) => m.chat_id === '555'), 'после отключения напоминание не приходит');
 });

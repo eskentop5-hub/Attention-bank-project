@@ -10,6 +10,7 @@ import { platformBonus } from '../services/economy.js';
 import { notify } from '../services/notifications.js';
 import { randomCode } from '../util.js';
 import { categoryLabel } from '../catalog.js';
+import { appButton, listTasks, flowText, cancelFlow, handleCallback, statsText, setRemind, remindOn, startReminders, setupMenuButton } from './features.js';
 
 // ---------- Коды привязки ----------
 
@@ -74,6 +75,7 @@ async function reply(chatId, text, extra) {
 }
 
 export async function handleUpdate(update) {
+  if (update.callback_query) return handleCallback(update.callback_query);
   const msg = update.message || update.edited_message;
   if (!msg?.text || !msg.chat) return;
   const chatId = msg.chat.id;
@@ -93,7 +95,29 @@ export async function handleUpdate(update) {
     return;
   }
 
+  // Ответ на вопрос задания, которое проходят прямо в чате
+  if (!cmd.startsWith('/') && user && (await flowText(chatId, msg.text))) return;
+  const app = appButton();
+  const appKb = app ? { reply_markup: { inline_keyboard: [[app]] } } : {};
+
   switch (cmd) {
+    case '/app':
+      return reply(chatId, app ? 'Откройте ATTENTION BANK прямо в Telegram:' : `Сайт: ${config.publicUrl}`, appKb);
+    case '/stats':
+      if (!user) return reply(chatId, 'Аккаунт не подключён. Отправьте /start, чтобы узнать как.');
+      return reply(chatId, statsText(user), appKb);
+    case '/cancel':
+      return reply(chatId, cancelFlow(chatId) ? 'Задание прервано. Его можно продолжить позже: /tasks' : 'Нечего отменять.');
+    case '/remind': {
+      if (!user) return reply(chatId, 'Аккаунт не подключён. Отправьте /start, чтобы узнать как.');
+      const want = (args[0] || '').toLowerCase();
+      if (want === 'on' || want === 'off') setRemind(user.id, want === 'on');
+      const on = remindOn(user.id);
+      return reply(chatId, `⏰ Напоминание о серии: <b>${on ? 'включено' : 'выключено'}</b>
+Приходит в ${config.telegram.reminderHour}:00, если вы ещё не заходили сегодня.`, {
+        reply_markup: { inline_keyboard: [[{ text: on ? '🔕 Выключить' : '🔔 Включить', callback_data: on ? 'rm:off' : 'rm:on' }]] },
+      });
+    }
     case '/start': {
       const code = (args[0] || '').toUpperCase();
       if (code) {
@@ -103,13 +127,15 @@ export async function handleUpdate(update) {
           chatId,
           `✅ <b>Аккаунт подтверждён</b>\n${escapeHtml(res.user.name)}, теперь уведомления ATTENTION BANK приходят сюда.` +
             (res.bonus ? `\n\n🎉 <b>+${res.bonus} AB Points</b> за подтверждение\nNew balance: <b>${res.user.balance} AB</b>` : '') +
-            `\n\nКоманды: /balance /history /tasks /help`
+            `\n\nКоманды: /tasks /stats /balance /help`,
+          appKb
         );
       }
-      if (user) return reply(chatId, `С возвращением, ${escapeHtml(user.name)}! Баланс: <b>${user.balance} AB</b>\nКоманды: /balance /history /tasks`);
+      if (user) return reply(chatId, `С возвращением, ${escapeHtml(user.name)}! Баланс: <b>${user.balance} AB</b>\nЗадания можно проходить прямо здесь: /tasks`, appKb);
       return reply(
         chatId,
-        `👋 Это бот <b>ATTENTION BANK</b>.\n\nЧтобы подключить аккаунт: откройте сайт → Профиль → «Подключить Telegram» и нажмите на ссылку. Или отправьте сюда:\n<code>/start ВАШ_КОД</code>\n\n${config.publicUrl}`
+        `👋 Это бот <b>ATTENTION BANK</b>.\n\nОткройте приложение кнопкой ниже — войдите или зарегистрируйтесь, и Telegram подключится автоматически.\n\nИли: сайт → Профиль → «Подключить Telegram», либо отправьте сюда <code>/start ВАШ_КОД</code>.\n\n${config.publicUrl}`,
+        appKb
       );
     }
     case '/balance':
@@ -122,13 +148,17 @@ export async function handleUpdate(update) {
       return reply(chatId, `<b>Последние транзакции</b>\n` + rows.map((r) => `${fmt(r.amount)} AB · ${escapeHtml(r.title)}`).join('\n'));
     }
     case '/tasks':
-      return reply(chatId, tasksText(), linkButton('Все задания', '/#/tasks'));
+      return listTasks(chatId, user);
     case '/unlink':
       if (!user) return reply(chatId, 'Аккаунт и так не подключён.');
       unlinkTelegram(user.id);
       return reply(chatId, 'Telegram отключён от аккаунта. Уведомления больше не придут.');
     default:
-      return reply(chatId, '<b>Команды</b>\n/balance — баланс\n/history — последние транзакции\n/tasks — новые задания\n/unlink — отключить Telegram');
+      return reply(
+        chatId,
+        '<b>Команды</b>\n/app — открыть приложение в Telegram\n/tasks — задания (проходить прямо в чате)\n/stats — статистика и серия 🔥\n/balance — баланс\n/history — последние транзакции\n/remind — напоминание о серии\n/cancel — прервать задание\n/unlink — отключить Telegram',
+        appKb
+      );
   }
 }
 
@@ -155,9 +185,12 @@ export async function startBot() {
     console.log(`[telegram] бот @${me.username} запущен (${config.telegram.mode})`);
     await call('setMyCommands', {
       commands: [
+        { command: 'app', description: 'Открыть приложение' },
+        { command: 'tasks', description: 'Задания прямо в чате' },
+        { command: 'stats', description: 'Статистика и серия' },
         { command: 'balance', description: 'Баланс AB Points' },
         { command: 'history', description: 'Последние транзакции' },
-        { command: 'tasks', description: 'Новые задания' },
+        { command: 'remind', description: 'Напоминание о серии' },
         { command: 'unlink', description: 'Отключить Telegram' },
         { command: 'help', description: 'Помощь' },
       ],
@@ -166,10 +199,12 @@ export async function startBot() {
     console.error('[telegram] не удалось подключиться:', e.message);
     return;
   }
+  await setupMenuButton();
+  startReminders();
 
   if (config.telegram.mode === 'webhook') {
     const url = `${config.publicUrl}/api/telegram/webhook`;
-    await call('setWebhook', { url, secret_token: webhookSecretToken(), allowed_updates: ['message'] }).catch((e) =>
+    await call('setWebhook', { url, secret_token: webhookSecretToken(), allowed_updates: ['message', 'callback_query'] }).catch((e) =>
       console.error('[telegram] setWebhook:', e.message)
     );
     console.log('[telegram] webhook:', url);
@@ -182,7 +217,7 @@ export async function startBot() {
   (async function loop() {
     while (running) {
       try {
-        const updates = await call('getUpdates', { offset, timeout: 30, allowed_updates: ['message'] });
+        const updates = await call('getUpdates', { offset, timeout: 30, allowed_updates: ['message', 'callback_query'] });
         for (const u of updates || []) {
           offset = u.update_id + 1;
           await handleUpdate(u).catch((e) => console.error('[telegram] update error:', e));

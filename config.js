@@ -40,6 +40,8 @@ export const config = {
     groupId: env('TELEGRAM_GROUP_ID', ''),
     mode: env('TELEGRAM_MODE', 'polling'),
     webhookSecret: env('TELEGRAM_WEBHOOK_SECRET', 'change-me'),
+    // Час ежедневного напоминания о серии (по часовому поясу TZ_OFFSET_MIN)
+    reminderHour: num('REMINDER_HOUR', 19),
     verifyBonus: num('TELEGRAM_VERIFY_BONUS', 10),
   },
   economy: {

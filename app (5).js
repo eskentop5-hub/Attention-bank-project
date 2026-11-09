@@ -365,6 +365,10 @@ async function router() {
   }
   window.scrollTo(0, 0);
   app.focus({ preventScroll: true });
+  // Плавный вход страницы
+  app.classList.remove('page-in');
+  void app.offsetWidth;
+  app.classList.add('page-in');
 }
 
 // ---------- Формы ----------
@@ -426,6 +430,47 @@ const interestChips = (selected = [], name = 'interests') =>
     .join('')}</div>`;
 const interestLabel = (id) => state.meta.interests.find((i) => i.id === id)?.label || id;
 const demoBadge = (on) => (on ? '<span class="badge demo" title="Демонстрационные данные">демо</span>' : '');
+
+// ---------- Пароли: поле с кнопкой «показать» и индикатор надёжности ----------
+const pwField = (name, label, { autocomplete = 'current-password', hint = '' } = {}) =>
+  `<label class="field"><span class="label">${label}</span><span class="pw-wrap"><input class="input" name="${name}" type="password" autocomplete="${autocomplete}" required><button type="button" class="pw-eye" aria-label="Показать пароль" data-eye>👁</button></span>${hint}</label>`;
+function pwChecks(p, { email = '', name = '' } = {}) {
+  const local = String(email).split('@')[0].toLowerCase();
+  const nm = String(name).trim().toLowerCase();
+  const low = p.toLowerCase();
+  return [
+    ['Минимум 8 символов', p.length >= 8],
+    ['Буквы и цифры', /\p{L}/u.test(p) && /\d/.test(p)],
+    ['Без email и имени', !(local.length >= 4 && low.includes(local)) && !(nm.length >= 4 && low.includes(nm))],
+    ['Не из списка простых', !/^(password1?|qwerty\d*|1q2w3e4r|12345678\d*|passw0rd|admin123|parol123)$/i.test(p) && !/^(.)\1+$/.test(p)],
+  ];
+}
+function bindPassword(form, { input = 'password', confirm = null, meterEl = null, who = () => ({}) } = {}) {
+  $$('[data-eye]', form).forEach((b) =>
+    b.addEventListener('click', () => {
+      const inp = b.previousElementSibling;
+      const show = inp.type === 'password';
+      inp.type = show ? 'text' : 'password';
+      b.setAttribute('aria-label', show ? 'Скрыть пароль' : 'Показать пароль');
+      b.classList.toggle('on', show);
+    })
+  );
+  if (!meterEl) return;
+  const draw = () => {
+    const p = form[input].value;
+    const checks = pwChecks(p, who());
+    const okCount = checks.filter((c) => c[1]).length + (p.length >= 12 ? 1 : 0) + (/[^\p{L}\d]/u.test(p) ? 1 : 0);
+    const level = !p ? 0 : checks.every((c) => c[1]) ? (okCount >= 6 ? 4 : okCount >= 5 ? 3 : 2) : 1;
+    const labels = ['', 'Слабый', 'Нормальный', 'Хороший', 'Надёжный'];
+    meterEl.innerHTML = `<div class="pw-meter l${level}"><i></i><i></i><i></i><i></i></div><span class="pw-level">${p ? labels[level] : 'Придумайте пароль'}</span>
+      <ul class="pw-rules">${checks.map(([t, ok]) => `<li class="${ok ? 'ok' : ''}">${ok ? '✓' : '○'} ${t}</li>`).join('')}</ul>
+      ${confirm && form[confirm].value ? `<div class="pw-match ${form[confirm].value === p ? 'ok' : ''}">${form[confirm].value === p ? '✓ Пароли совпадают' : '✗ Пароли не совпадают'}</div>` : ''}`;
+  };
+  form[input].addEventListener('input', draw);
+  if (confirm) form[confirm].addEventListener('input', draw);
+  form.addEventListener('input', (e) => (e.target.name === 'email' || e.target.name === 'name') && draw());
+  draw();
+}
 
 // ---------- Общие компоненты ----------
 function meter(p, { lg = false, animate = false } = {}) {
@@ -640,6 +685,17 @@ async function viewLanding() {
 async function afterAuth(user, next) {
   state.me = user;
   state.lastSeenNotif = 0;
+  // Открыто внутри Telegram: привязываем Telegram к аккаунту автоматически, без кода
+  const tgInit = tgInitData();
+  if (tgInit && !user.telegram?.linked) {
+    try {
+      const r = await api('/api/telegram/webapp-link', { method: 'POST', body: { initData: tgInit } });
+      if (r.bonus) toast(`Telegram подключён · +${r.bonus} AB`);
+      else toast('Telegram подключён');
+    } catch (e) {
+      toast(e.message, { kind: 'err' });
+    }
+  }
   await refreshMe();
   startPolling();
   if (next) location.hash = '#' + next;
@@ -664,7 +720,7 @@ async function viewLogin({ query }) {
       <h1 style="font-size:1.8rem">Вход</h1>
       <form class="panel stack" id="f" novalidate>
         <label class="field"><span class="label">Email</span><input class="input" name="email" type="email" autocomplete="email" required></label>
-        <label class="field"><span class="label">Пароль</span><input class="input" name="password" type="password" autocomplete="current-password" required></label>
+        ${pwField('password', 'Пароль')}
         <button class="btn btn-primary btn-block btn-lg" type="submit">Войти</button>
         <p class="small muted" style="margin:0">Нет аккаунта? <a href="#/register">Создайте его</a></p>
       </form>
@@ -677,9 +733,16 @@ async function viewLogin({ query }) {
     </div>
   </div>`;
   const form = $('#f');
+  bindPassword(form);
   bindForm(form, async (d) => {
-    const { user } = await api('/api/auth/login', { method: 'POST', body: d });
-    await afterAuth(user, query.next);
+    try {
+      const { user } = await api('/api/auth/login', { method: 'POST', body: d });
+      await afterAuth(user, query.next);
+    } catch (e) {
+      // На бесплатном хостинге база может обнулиться после перезапуска сервера — честно подсказываем
+      if (state.meta.demoMode && /Неверный email или пароль/.test(e.message)) throw new Error(`${e.message}. Если аккаунт создан раньше: в демо-версии на бесплатном сервере база обнуляется при перезапуске — зарегистрируйтесь заново.`);
+      throw e;
+    }
   });
   $$('[data-demo]').forEach((b) =>
     b.addEventListener('click', () => {
@@ -706,7 +769,9 @@ async function viewRegister({ query }) {
         ${role === 'company' ? '<label class="field"><span class="label">Название студии или компании</span><input class="input" name="companyName" required></label>' : ''}
         <label class="field"><span class="label">${role === 'company' ? 'Контактное лицо' : 'Имя'}</span><input class="input" name="name" autocomplete="name" required></label>
         <label class="field"><span class="label">Email</span><input class="input" name="email" type="email" autocomplete="email" required></label>
-        <label class="field"><span class="label">Пароль</span><input class="input" name="password" type="password" autocomplete="new-password" minlength="8" required><span class="hint">Минимум 8 символов</span></label>
+        ${pwField('password', 'Пароль', { autocomplete: 'new-password' })}
+        <div class="pw-box" id="pw-meter" aria-live="polite"></div>
+        ${pwField('passwordConfirm', 'Повторите пароль', { autocomplete: 'new-password' })}
         ${role === 'user' ? '<label class="check"><input type="checkbox" name="ageConfirmed"> Мне есть 16 лет</label>' : ''}
         <label class="check"><input type="checkbox" name="consent"> Согласен(на) на обработку данных. Компании получают только ответы на задания — без email и контактов.</label>
         <button class="btn btn-primary btn-block btn-lg" type="submit">Создать аккаунт</button>
@@ -714,7 +779,12 @@ async function viewRegister({ query }) {
       </form>
     </div>
   </div>`;
-  bindForm($('#f'), async (d) => {
+  const rf = $('#f');
+  bindPassword(rf, { confirm: 'passwordConfirm', meterEl: $('#pw-meter'), who: () => ({ email: rf.email.value, name: rf.name.value }) });
+  bindForm(rf, async (d) => {
+    const bad = pwChecks(d.password, { email: d.email, name: d.name }).find((c) => !c[1]);
+    if (bad) throw new Error(`Пароль: ${bad[0].toLowerCase()}`);
+    if (d.password !== d.passwordConfirm) throw new Error('Пароли не совпадают');
     const { user } = await api('/api/auth/register', { method: 'POST', body: d });
     toast('Аккаунт создан');
     await afterAuth(user);
@@ -1306,7 +1376,14 @@ async function viewProfile() {
       <div class="row"><span class="nudge" style="padding:0;border:0;background:none"><span class="tg">${I.tg(18)}</span></span><h2 style="margin:0">Telegram</h2></div>
       ${
         tg.linked
-          ? `<p class="small" style="margin:0">Подключён ${tg.username ? '@' + esc(tg.username) : ''}. Команды бота: /balance, /history, /tasks.</p>
+          ? `<p class="small" style="margin:0">Подключён ${tg.username ? '@' + esc(tg.username) : ''}.</p>
+             <ul class="tg-feats">
+               <li><b>📱 Приложение в Telegram</b> — кнопка «Открыть» в чате с ботом, вход без пароля</li>
+               <li><b>▶ Задания прямо в чате</b> — /tasks, ответы кнопками и сообщениями</li>
+               <li><b>📊 /stats</b> — заработок, серия 🔥 и челлендж дня</li>
+               <li><b>⏰ Напоминание о серии</b> — вечером, если вы ещё не заходили (/remind)</li>
+               ${me.role === 'company' ? '<li><b>✅ Проверка ответов кнопками</b> — «Одобрить / Отклонить» прямо в Telegram</li>' : ''}
+             </ul>
              <div><button class="btn btn-ghost btn-sm" id="tg-unlink">Отключить</button></div>`
           : `<p class="small muted" style="margin:0">Подключение подтверждает аккаунт: один Telegram — один аккаунт. Уведомления о проверках придут сразу; выключить их можно в настройках.</p>
              <div><button class="btn btn-primary" id="tg-link">Подключить Telegram</button></div><div id="tg-code"></div>`
@@ -1389,6 +1466,13 @@ async function viewSettings() {
       <div class="row"><div style="flex:1;min-width:220px"><b>Мои данные</b><p class="small muted" style="margin:4px 0 0">Профиль, интересы, ответы, транзакции и коды наград — одним JSON-файлом.</p></div>
         <a class="btn btn-ghost" href="/api/me/export" download>${I.download(18)} Скачать</a></div>
       <div><b>Согласие на обработку данных</b><p class="small muted" style="margin:4px 0 0">${me.consentAt ? `Дано ${fmtDate(me.consentAt)}.` : 'Дано при регистрации.'} Компании видят ваше имя и ответы на их задания, но не email и контакты.</p></div>
+      <form id="pwf" class="stack pw-change"><b>Сменить пароль</b>
+        ${pwField('current', 'Текущий пароль')}
+        ${pwField('next', 'Новый пароль', { autocomplete: 'new-password' })}
+        <div class="pw-box" id="pw-meter2" aria-live="polite"></div>
+        ${pwField('confirm', 'Повторите новый пароль', { autocomplete: 'new-password' })}
+        <button class="btn btn-ghost" type="submit" style="justify-self:start">Сменить пароль</button>
+        <p class="tiny muted" style="margin:0">После смены пароля другие устройства выйдут из аккаунта.</p></form>
       <div class="row"><div style="flex:1"><b>Выход</b><p class="small muted" style="margin:4px 0 0">Завершить сессию на этом устройстве.</p></div><button class="btn btn-danger" id="logout">Выйти</button></div>
     </div>
   </div>`;
@@ -1419,6 +1503,15 @@ async function viewSettings() {
     });
   };
   drawOs();
+  const pwf = $('#pwf');
+  bindPassword(pwf, { input: 'next', confirm: 'confirm', meterEl: $('#pw-meter2'), who: () => ({ email: state.me.email, name: state.me.name }) });
+  bindForm(pwf, async (d) => {
+    if (d.next !== d.confirm) throw new Error('Пароли не совпадают');
+    await api('/api/me/password', { method: 'POST', body: d });
+    pwf.reset();
+    pwf.next.dispatchEvent(new Event('input'));
+    toast('Пароль изменён');
+  });
   $('#mascot-on').addEventListener('change', (e) => {
     store.set('ab_mascot', e.target.checked ? 'on' : 'off');
     if (e.target.checked) X.mountMascot();
@@ -2016,11 +2109,53 @@ function desktopModal() {
 }
 
 // ---------- Запуск ----------
+// ---------- Telegram Mini App ----------
+// Telegram передаёт подписанные данные запуска в адресе (#tgWebAppData=...). Скрипт Telegram не нужен.
+function tgInitData() {
+  try {
+    return sessionStorage.getItem('tg_init') || '';
+  } catch {
+    return '';
+  }
+}
+async function telegramMiniApp() {
+  const h = location.hash.slice(1);
+  if (h.includes('tgWebAppData=')) {
+    const p = new URLSearchParams(h);
+    try {
+      sessionStorage.setItem('tg_init', p.get('tgWebAppData') || '');
+    } catch {}
+    history.replaceState(null, '', location.pathname + '#/');
+  }
+  const init = tgInitData();
+  if (!init) return;
+  document.body.classList.add('in-telegram');
+  // Сообщаем Telegram, что приложение готово, и разворачиваем на весь экран
+  const post = (ev) => {
+    try {
+      if (window.TelegramWebviewProxy) window.TelegramWebviewProxy.postEvent(ev, '');
+      else window.parent?.postMessage(JSON.stringify({ eventType: ev, eventData: '' }), '*');
+    } catch {}
+  };
+  post('web_app_ready');
+  post('web_app_expand');
+  if (state.me) return;
+  try {
+    const r = await api('/api/telegram/webapp-login', { method: 'POST', body: { initData: init } });
+    if (r.linked) {
+      state.me = r.user;
+      await refreshMe();
+      if (!location.hash || location.hash === '#/' || location.hash.startsWith('#/?')) location.hash = home();
+    } else state.tgGuest = r.telegramName || true;
+  } catch {}
+}
+
 async function boot() {
   X.setup({ api, esc, fmt, plural, initials, toast, state, store, fmtTime, renderChrome, enhance: () => enhance(app), get app() { return app; }, I });
   try {
     state.meta = await api('/api/meta');
     await refreshMe();
+    await telegramMiniApp();
   } catch {
     app.innerHTML = '<div class="empty"><h3>Сервер недоступен</h3><p>Проверьте подключение и обновите страницу.</p></div>';
     return;
@@ -2034,6 +2169,7 @@ async function boot() {
     queueMicrotask(() => {
       pending = false;
       enhance(app);
+      X.reveal(app);
     });
   }).observe(app, { childList: true, subtree: true });
   window.addEventListener('beforeinstallprompt', (e) => {

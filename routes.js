@@ -9,7 +9,8 @@ import { postTransaction, listTransactions, verifyLedger, verifyAllLedgers } fro
 import * as campaigns from './services/campaigns.js';
 import * as rewards from './services/rewards.js';
 import { listNotifications, unreadCount, markAllRead } from './services/notifications.js';
-import { createLinkCode, unlinkTelegram, handleUpdate, webhookSecretToken } from './telegram/bot.js';
+import { createLinkCode, linkAccount, unlinkTelegram, handleUpdate, webhookSecretToken } from './telegram/bot.js';
+import { verifyInitData } from './telegram/features.js';
 import { telegramEnabled } from './telegram/api.js';
 import { recordVisit, streak, userStats, dailyChallenge } from './services/stats.js';
 import * as mascot from './services/mascot.js';
@@ -81,8 +82,11 @@ POST('/api/auth/register', (ctx) => {
   const b = ctx.body;
   const role = b.role === 'company' ? 'company' : 'user';
   const email = cleanEmail(b.email);
-  const password = str(b.password, { field: 'Пароль', min: 8, max: 200 });
+  const password = String(b.password || '');
   const name = str(b.name, { field: 'Имя', min: 2, max: 80 });
+  const pwErr = auth.passwordProblem(password, { email, name });
+  if (pwErr) throw bad(pwErr);
+  if (b.passwordConfirm !== undefined && b.passwordConfirm !== password) throw bad('Пароли не совпадают');
   const companyName = role === 'company' ? str(b.companyName, { field: 'Название компании', min: 2, max: 120 }) : null;
   if (!b.consent) throw bad('Нужно согласие на обработку данных');
   if (role === 'user' && !b.ageConfirmed) throw bad('Платформа доступна с 16 лет. Подтвердите возраст.');
@@ -108,6 +112,25 @@ POST('/api/auth/login', (ctx) => {
   const s = auth.createSession(user.id);
   ctx.setCookie(auth.sessionCookie(s.token, s.expires));
   return { user: auth.publicUser(user) };
+});
+
+// Смена пароля: нужен текущий пароль; остальные сессии завершаются
+POST('/api/me/password', (ctx) => {
+  const u = need(ctx);
+  const key = `pw|${u.id}`;
+  auth.checkLoginRate(key);
+  if (!auth.verifyPassword(String(ctx.body.current || ''), u.password_hash)) throw bad('Текущий пароль неверный');
+  const next = String(ctx.body.next || '');
+  if (next === ctx.body.current) throw bad('Новый пароль должен отличаться от текущего');
+  const pwErr = auth.passwordProblem(next, { email: u.email, name: u.name });
+  if (pwErr) throw bad(pwErr);
+  if (ctx.body.confirm !== undefined && ctx.body.confirm !== next) throw bad('Пароли не совпадают');
+  auth.resetLoginRate(key);
+  run('UPDATE users SET password_hash = ? WHERE id = ?', auth.hashPassword(next), u.id);
+  run('DELETE FROM sessions WHERE user_id = ?', u.id);
+  const s = auth.createSession(u.id);
+  ctx.setCookie(auth.sessionCookie(s.token, s.expires));
+  return { ok: true };
 });
 
 POST('/api/auth/logout', (ctx) => {
@@ -231,6 +254,27 @@ POST('/api/notifications/read', (ctx) => {
 // ---------- Telegram ----------
 
 POST('/api/telegram/link-code', (ctx) => createLinkCode(need(ctx).id));
+
+// Mini App: вход по подписанным данным Telegram. Подпись проверяется токеном бота — подделать нельзя.
+POST('/api/telegram/webapp-login', (ctx) => {
+  const tg = verifyInitData(ctx.body.initData);
+  if (!tg) throw forbidden('Данные Telegram не прошли проверку подписи');
+  const user = one("SELECT * FROM users WHERE telegram_chat_id = ? AND role != 'system'", String(tg.id));
+  if (!user) return { linked: false, telegramName: tg.first_name || tg.username || null };
+  const s = auth.createSession(user.id);
+  ctx.setCookie(auth.sessionCookie(s.token, s.expires));
+  return { linked: true, user: auth.publicUser(user) };
+});
+// Mini App: привязать Telegram к аккаунту, в который только что вошли (без кода — по подписи Telegram)
+POST('/api/telegram/webapp-link', (ctx) => {
+  const u = need(ctx);
+  const tg = verifyInitData(ctx.body.initData);
+  if (!tg) throw forbidden('Данные Telegram не прошли проверку подписи');
+  if (u.telegram_chat_id === String(tg.id)) return { ok: true, already: true };
+  const res = linkAccount(createLinkCode(u.id).code, tg.id, tg.username);
+  if (!res.ok) throw bad(res.reason);
+  return { ok: true, bonus: res.bonus, user: auth.publicUser(res.user) };
+});
 POST('/api/telegram/unlink', (ctx) => {
   unlinkTelegram(need(ctx).id);
   return { ok: true };

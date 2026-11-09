@@ -91,7 +91,8 @@ function serveStatic(req, res, pathname) {
   const ext = path.extname(file);
   const headers = {
     'Content-Type': MIME[ext] || 'application/octet-stream',
-    'Cache-Control': ext === '.html' || file.endsWith('sw.js') ? 'no-cache' : 'public, max-age=300',
+    // HTML, JS и CSS всегда сверяются с сервером — после обновления не смешиваются старые и новые файлы
+    'Cache-Control': ['.html', '.js', '.css', '.webmanifest'].includes(ext) ? 'no-cache' : 'public, max-age=300',
     ...SECURITY_HEADERS,
   };
   if (ext === '.mp4') return sendBuffer(req, res, fs.readFileSync(file), headers);
@@ -111,7 +112,7 @@ function serveEmbedded(req, res, pathname) {
   if (!embeddedCache.has(key)) embeddedCache.set(key, Buffer.from(ASSETS[key], 'base64'));
   sendBuffer(req, res, embeddedCache.get(key), {
     'Content-Type': MIME[ext] || 'application/octet-stream',
-    'Cache-Control': ext === '.html' || key.endsWith('sw.js') ? 'no-cache' : 'public, max-age=300',
+    'Cache-Control': ['.html', '.js', '.css', '.webmanifest'].includes(ext) ? 'no-cache' : 'public, max-age=300',
     ...SECURITY_HEADERS,
   });
 }
