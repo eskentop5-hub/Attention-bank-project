@@ -1,6 +1,6 @@
 // REST API ATTENTION BANK
 import { config } from './config.js';
-import { one, all, run } from './db.js';
+import { one, all, run, tx, now } from './db.js';
 import { bad, forbidden, HttpError, str, email as cleanEmail, int } from './util.js';
 import { CATEGORIES, INTERESTS, REWARD_CATEGORIES, QUESTION_TYPE_LABELS, cleanInterests } from './catalog.js';
 import { home, activity, exportUserData } from './services/home.js';
@@ -68,7 +68,8 @@ GET('/api/stats', () => {
     (SELECT COUNT(*) FROM campaigns WHERE status = 'active') AS activeCampaigns,
     (SELECT COUNT(*) FROM assignments WHERE status = 'approved') AS verifiedResults,
     (SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE type = 'task_reward') AS paidOut`);
-  return s;
+  // Правила экономики — для модели unit-экономики в презентации (считается из настроек, а не вписано руками)
+  return { ...s, economy: { abToKzt: config.economy.abToKzt, platformFeePercent: config.economy.platformFeePercent, sellerFeePercent: config.economy.sellerFeePercent } };
 });
 
 // Реальные награды каталога для главной страницы (без входа)
@@ -130,6 +131,29 @@ POST('/api/me/password', (ctx) => {
   run('DELETE FROM sessions WHERE user_id = ?', u.id);
   const s = auth.createSession(u.id);
   ctx.setCookie(auth.sessionCookie(s.token, s.expires));
+  return { ok: true };
+});
+
+// Удаление аккаунта участника: личные данные обезличиваются, а записи о баллах остаются,
+// чтобы бухгалтерия платформы сходилась (баланс = сумма транзакций). Ответы остаются у компаний без имени.
+POST('/api/me/delete', (ctx) => {
+  const u = need(ctx, 'user');
+  const key = `del|${u.id}`;
+  auth.checkLoginRate(key);
+  if (!auth.verifyPassword(String(ctx.body.password || ''), u.password_hash)) throw bad('Пароль неверный');
+  auth.resetLoginRate(key);
+  tx(() => {
+    run(
+      `UPDATE users SET email = ?, name = 'Удалённый участник', password_hash = 'deleted', telegram_chat_id = NULL, telegram_username = NULL,
+         telegram_verified_at = NULL, notify_telegram = 0, avatar = NULL, interests = '[]', goal_reward_id = NULL, deleted_at = ? WHERE id = ?`,
+      `deleted-${u.id}@deleted.invalid`,
+      now(),
+      u.id
+    );
+    run('DELETE FROM sessions WHERE user_id = ?', u.id);
+    run('DELETE FROM telegram_link_codes WHERE user_id = ?', u.id);
+  });
+  ctx.setCookie(auth.sessionCookie(null));
   return { ok: true };
 });
 
@@ -196,7 +220,7 @@ GET('/api/activity', (ctx) => {
 GET('/api/tasks', (ctx) => ({ tasks: campaigns.listTasksForUser(need(ctx, 'user')) }));
 GET('/api/tasks/:id', (ctx) => ({ task: campaigns.getTaskForUser(need(ctx, 'user'), id(ctx.params.id)) }));
 POST('/api/tasks/:id/start', (ctx) => ({ task: campaigns.startTask(need(ctx, 'user'), id(ctx.params.id)) }));
-POST('/api/tasks/:id/submit', { idempotent: true }, (ctx) => campaigns.submitTask(need(ctx, 'user'), id(ctx.params.id), ctx.body.answers));
+POST('/api/tasks/:id/submit', { idempotent: true }, (ctx) => campaigns.submitTask(need(ctx, 'user'), id(ctx.params.id), ctx.body.answers, ctx.body.meta));
 GET('/api/my/submissions', (ctx) => ({ submissions: campaigns.mySubmissions(need(ctx, 'user').id) }));
 
 // ---------- Кошелёк и транзакции ----------
@@ -301,6 +325,11 @@ POST('/api/company/campaigns/:id/status', { idempotent: true }, (ctx) => {
   campaigns.setCampaignStatus(need(ctx, 'company'), id(ctx.params.id), ctx.body.status);
   return { ok: true };
 });
+// Отчёт для студии (печатная версия / PDF) и ссылка-приглашение тестировщиков
+GET('/api/company/campaigns/:id/report', (ctx) => campaigns.campaignReport(need(ctx, 'company'), id(ctx.params.id)));
+GET('/api/company/campaigns/:id/invite', (ctx) => ({ code: campaigns.inviteFor(need(ctx, 'company'), id(ctx.params.id)) }));
+GET('/api/join/:code', (ctx) => campaigns.joinInfo(ctx.params.code));
+
 GET('/api/company/campaigns/:id/export.csv', { raw: true }, (ctx) => {
   const csv = campaigns.exportCsv(need(ctx, 'company'), id(ctx.params.id));
   ctx.res.writeHead(200, {

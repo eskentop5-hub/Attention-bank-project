@@ -15,6 +15,10 @@ export const FLAG_INFO = {
   unverified_account: { label: 'Аккаунт не подтверждён через Telegram', penalty: 10 },
   low_trust: { label: 'Много отклонённых ответов в истории', penalty: 15 },
   failed_attention_check: { label: 'Неверный ответ на контрольный вопрос', penalty: 45 },
+  pasted_text: { label: 'Текст ответа вставлен, а не напечатан', penalty: 20 },
+  typing_too_fast: { label: 'Текст набран быстрее, чем печатает человек', penalty: 20 },
+  ai_style: { label: 'Похоже на сгенерированный текст (шаблонные обороты)', penalty: 25 },
+  no_specifics: { label: 'В ответах нет деталей продукта — возможно, продукт не открывали', penalty: 25 },
 };
 
 const normalize = (s) => String(s).toLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
@@ -72,14 +76,60 @@ function lowEffort(text) {
   return false;
 }
 
+// Шаблонные обороты, типичные для текстов нейросетей. Один-два — нормально для человека, много — сигнал.
+const AI_MARKERS = [
+  'в целом', 'таким образом', 'стоит отметить', 'следует отметить', 'важно отметить', 'кроме того', 'в заключение', 'подводя итог',
+  'погружает', 'погружение в', 'увлекательн', 'захватывающ', 'незабываем', 'уникальн', 'игровой процесс', 'пользовательский опыт',
+  'интуитивно понятн', 'общее впечатление', 'не только', 'а также', 'является', 'данн', 'overall', 'in conclusion', 'it is worth noting',
+];
+const AI_DISCLAIMERS = /(как (языковая|ии|искусственный)|я не могу (играть|пройти)|as an ai|i (cannot|can't) play|chatgpt|нейросет)/i;
+export function aiStyleScore(text) {
+  const t = String(text).toLowerCase();
+  if (AI_DISCLAIMERS.test(t)) return 99;
+  let n = AI_MARKERS.reduce((s, m) => s + (t.includes(m) ? 1 : 0), 0);
+  if ((t.match(/—/g) || []).length >= 3) n++;
+  if (/^\s*(\d\.|[-•*])\s/m.test(t) && /\n\s*(\d\.|[-•*])\s/.test(t)) n++; // оформленный список в коротком ответе
+  return n;
+}
+
 /** Вычисляет оценку качества и флаги для отправленного ответа */
-export function scoreSubmission({ campaign, questions, answers, startedAt, userId, assignmentId }) {
+export function scoreSubmission({ campaign, questions, answers, startedAt, userId, assignmentId, meta = {} }) {
   const flags = [];
   const seconds = (Date.now() - new Date(startedAt).getTime()) / 1000;
   if (seconds < campaign.min_seconds) flags.push('too_fast');
 
   const textQs = questions.filter((q) => q.type === 'text' && answers[q.id]);
   if (textQs.some((q) => lowEffort(answers[q.id]))) flags.push('low_effort_text');
+
+  // Сигналы набора текста (присылает интерфейс сайта; в Telegram их нет — там флаги не ставятся)
+  const pasted = Array.isArray(meta?.pasted) ? meta.pasted.map(String) : [];
+  const typing = meta?.typingMs && typeof meta.typingMs === 'object' ? meta.typingMs : {};
+  if (textQs.some((q) => pasted.includes(q.id) && String(answers[q.id]).length >= 40)) flags.push('pasted_text');
+  if (
+    textQs.some((q) => {
+      const len = String(answers[q.id]).length;
+      const ms = Number(typing[q.id]);
+      return len >= 60 && ms > 0 && len / (ms / 1000) > 15 && !pasted.includes(q.id);
+    })
+  )
+    flags.push('typing_too_fast');
+
+  // Признаки сгенерированного текста
+  const allText = textQs.map((q) => answers[q.id]).join('\n');
+  if (allText && aiStyleScore(allText) >= 4) flags.push('ai_style');
+
+  // Детали продукта: компания задаёт слова, которые упоминает тот, кто реально прошёл продукт
+  const keywords = (() => {
+    try {
+      return JSON.parse(campaign.keywords || '[]');
+    } catch {
+      return [];
+    }
+  })();
+  if (keywords.length && allText) {
+    const low = allText.toLowerCase();
+    if (!keywords.some((k) => low.includes(String(k).toLowerCase()))) flags.push('no_specifics');
+  }
 
   // Дубликаты среди ответов других участников этой кампании
   if (textQs.length) {

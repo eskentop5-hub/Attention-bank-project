@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS users (
   is_demo              INTEGER NOT NULL DEFAULT 0,  -- демонстрационные аккаунты помечаются в интерфейсе
   avatar               TEXT,                        -- id встроенного аватара (a1…a12)
   consent_at           TEXT,
+  deleted_at           TEXT,                        -- аккаунт удалён по просьбе участника (данные обезличены)
   created_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
@@ -49,7 +50,9 @@ CREATE TABLE IF NOT EXISTS campaigns (
   status            TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'paused', 'closed')),
   reserved          INTEGER NOT NULL DEFAULT 0 CHECK (reserved >= 0), -- зарезервированный бюджет в AB
   created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
-  closed_at         TEXT
+  closed_at         TEXT,
+  keywords    TEXT,                    -- детали продукта, которые обычно упоминает тот, кто его реально прошёл (участнику не показываются)
+  invite_code TEXT                     -- код ссылки-приглашения тестировщиков
 );
 
 CREATE TABLE IF NOT EXISTS assignments (

@@ -325,6 +325,9 @@ const routes = [
   ['/company/campaigns/:id/edit', (ctx) => viewCampaignForm(ctx), { role: 'company' }],
   ['/company/rewards', viewCompanyRewards, { role: 'company' }],
   ['/company/revenue', X.viewRevenue, { role: 'company' }],
+  ['/company/campaigns/:id/report', X.viewReport, { role: 'company' }],
+  ['/join/:code', X.viewJoin, {}],
+  ['/privacy', X.viewPrivacy, {}],
   ['/economy', X.viewEconomy, {}],
   ['/budget', viewActivity, { role: 'company' }],
 ];
@@ -698,6 +701,13 @@ async function afterAuth(user, next) {
   }
   await refreshMe();
   startPolling();
+  // Пришёл по приглашению на конкретное задание — ведём прямо в него
+  let join = null;
+  try {
+    join = sessionStorage.getItem('ab_join');
+    sessionStorage.removeItem('ab_join');
+  } catch {}
+  if (!next && join && user.role === 'user') next = `/tasks/${join}`;
   if (next) location.hash = '#' + next;
   else if (user.role === 'user' && user.interests.length === 0) location.hash = '#/onboarding';
   else location.hash = home();
@@ -773,7 +783,7 @@ async function viewRegister({ query }) {
         <div class="pw-box" id="pw-meter" aria-live="polite"></div>
         ${pwField('passwordConfirm', 'Повторите пароль', { autocomplete: 'new-password' })}
         ${role === 'user' ? '<label class="check"><input type="checkbox" name="ageConfirmed"> Мне есть 16 лет</label>' : ''}
-        <label class="check"><input type="checkbox" name="consent"> Согласен(на) на обработку данных. Компании получают только ответы на задания — без email и контактов.</label>
+        <label class="check"><input type="checkbox" name="consent"> Согласен(на) на обработку данных по <a href="#/privacy" target="_blank">политике конфиденциальности</a>. Компании получают только ответы на задания — без email и контактов.</label>
         <button class="btn btn-primary btn-block btn-lg" type="submit">Создать аккаунт</button>
         <p class="small muted" style="margin:0">Уже есть аккаунт? <a href="#/login">Войти</a></p>
       </form>
@@ -1273,8 +1283,21 @@ async function viewTask({ params }) {
       ta.addEventListener('input', upd);
       upd();
     });
+    // Сигналы для проверки качества: вставлен ли текст и сколько времени его набирали (сам текст никуда не уходит отдельно)
+    const meta = { pasted: [], typingMs: {} };
+    $$('#answers textarea').forEach((ta) => {
+      let first = 0;
+      ta.addEventListener('paste', (e) => {
+        const txt = e.clipboardData?.getData('text') || '';
+        if (txt.length >= 40 && !meta.pasted.includes(ta.name)) meta.pasted.push(ta.name);
+      });
+      ta.addEventListener('input', () => {
+        if (!first) first = performance.now();
+        meta.typingMs[ta.name] = Math.round(performance.now() - first);
+      });
+    });
     bindForm($('#answers'), async (d) => {
-      const res = await api(`/api/tasks/${t.id}/submit`, { method: 'POST', body: { answers: d }, idem: true });
+      const res = await api(`/api/tasks/${t.id}/submit`, { method: 'POST', body: { answers: d, meta }, idem: true });
       await refreshMe();
       renderChrome();
       state.justDone = true;
@@ -1474,6 +1497,14 @@ async function viewSettings() {
         <button class="btn btn-ghost" type="submit" style="justify-self:start">Сменить пароль</button>
         <p class="tiny muted" style="margin:0">После смены пароля другие устройства выйдут из аккаунта.</p></form>
       <div class="row"><div style="flex:1"><b>Выход</b><p class="small muted" style="margin:4px 0 0">Завершить сессию на этом устройстве.</p></div><button class="btn btn-danger" id="logout">Выйти</button></div>
+      ${
+        me.role === 'user'
+          ? `<details class="danger-zone"><summary><b>Удалить аккаунт</b></summary>
+        <p class="small muted">Имя, email, аватар и привязка Telegram будут стёрты, войти снова не получится. Ответы останутся у компаний без вашего имени, а записи о баллах — для сверки бухгалтерии. Неиспользованные AB Points (${fmt(me.balance)}) сгорят. <a href="#/privacy">Подробнее</a></p>
+        <form id="delf" class="row" style="align-items:flex-end">${pwField('password', 'Пароль для подтверждения')}<button class="btn btn-danger" type="submit">Удалить навсегда</button></form>
+      </details>`
+          : ''
+      }
     </div>
   </div>`;
   const drawOs = () => {
@@ -1512,6 +1543,16 @@ async function viewSettings() {
     pwf.next.dispatchEvent(new Event('input'));
     toast('Пароль изменён');
   });
+  const delf = $('#delf');
+  if (delf)
+    bindForm(delf, async (d) => {
+      if (!(await confirmDialog({ title: 'Удалить аккаунт?', body: 'Восстановить его будет нельзя.', confirm: 'Удалить навсегда', tone: 'danger' }))) return;
+      await api('/api/me/delete', { method: 'POST', body: d });
+      state.me = null;
+      clearInterval(state.poll);
+      toast('Аккаунт удалён');
+      location.hash = '#/';
+    });
   $('#mascot-on').addEventListener('change', (e) => {
     store.set('ab_mascot', e.target.checked ? 'on' : 'off');
     if (e.target.checked) X.mountMascot();
@@ -1652,6 +1693,7 @@ async function viewCampaignForm({ params }) {
           <label class="field"><span class="label">Участников</span><input class="input" name="maxParticipants" type="number" min="1" value="${v('maxParticipants', 20)}"></label>
           <label class="field"><span class="label">Время, мин</span><input class="input" name="estMinutes" type="number" min="1" max="240" value="${v('estMinutes', 10)}"><span class="hint">Ваша оценка для участника</span></label>
         </div>
+        <label class="field"><span class="label">Детали продукта для проверки (необязательно)</span><input class="input" name="keywords" value="${esc((c?.keywords || []).join(', '))}" placeholder="например: овраг, монеты, всадник"><span class="hint">Слова, которые упомянет тот, кто действительно прошёл продукт. Участник их не видит. Если в ответе нет ни одного — оценка качества снижается.</span></label>
         <label class="field" style="max-width:260px"><span class="label">Минимальное время, сек</span><input class="input" name="minSeconds" type="number" min="0" value="${v('minSeconds', 120)}"><span class="hint">Быстрее — ниже оценка качества</span></label>
         <label class="check"><input type="checkbox" name="autoApprove" ${c?.autoApprove ? 'checked' : ''}> Подтверждать автоматически, если оценка качества от ${meta.verification.autoApproveScore}/100</label>
         <label class="check"><input type="checkbox" name="requireTelegram" ${c?.requireTelegram ? 'checked' : ''}> Только участники, подтверждённые через Telegram</label>
@@ -1726,6 +1768,7 @@ async function viewCampaignForm({ params }) {
       estMinutes: d.estMinutes === '' ? null : Number(d.estMinutes),
       autoApprove: d.autoApprove,
       requireTelegram: d.requireTelegram,
+      keywords: d.keywords || '',
     };
     if (!lockQ)
       body.questions = $$('.qbuilder', qs).map((el) => {
@@ -1763,6 +1806,8 @@ function answerList(questions, answers) {
 async function viewCampaign({ params, query }) {
   const data = await api(`/api/company/campaigns/${params.id}`);
   const c = data.campaign;
+  // Кампании, созданные до появления приглашений, получают код при первом открытии
+  if (c.status === 'active' && !c.inviteCode) c.inviteCode = (await api(`/api/company/campaigns/${c.id}/invite`).catch(() => ({}))).code || null;
   const s = c.stats;
   const pending = data.submissions.filter((x) => x.status === 'submitted');
   const tab = query.tab || (pending.length ? 'review' : 'report');
@@ -1821,8 +1866,22 @@ async function viewCampaign({ params, query }) {
       ${c.status === 'paused' ? '<button class="btn btn-ghost" data-status="active">Возобновить</button>' : ''}
       ${c.status !== 'closed' ? '<button class="btn btn-danger" data-status="closed">Закрыть</button>' : ''}
       <a class="btn btn-ghost" href="/api/company/campaigns/${c.id}/export.csv" download>${I.download(17)} CSV</a>
+      <a class="btn btn-primary" href="#/company/campaigns/${c.id}/report">Отчёт для студии</a>
     </div>
   </div>
+  ${
+    c.status === 'active' && c.inviteCode
+      ? (() => {
+          const link = `${location.origin}/#/join/${c.inviteCode}`;
+          return `<div class="invite panel">
+        <div><b>Пригласить тестировщиков</b><p class="small muted" style="margin:4px 0 0">Отправьте ссылку в чат курса, клуба или своего сообщества — человек зарегистрируется и сразу попадёт в это задание.</p></div>
+        <div class="invite-row"><input class="input" readonly value="${esc(link)}" id="inv-link" aria-label="Ссылка-приглашение"><button class="btn btn-ghost" type="button" id="inv-copy">Скопировать</button>
+        <a class="btn btn-ghost" target="_blank" rel="noopener" href="https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(`Помогите протестировать «${c.title}» — +${c.reward} AB Points`)}">Поделиться в Telegram</a></div>
+        ${state.meta?.telegram?.botUsername ? `<p class="tiny muted" style="grid-column:1/-1;margin:0">Ссылка через бота: <code>https://t.me/${esc(state.meta.telegram.botUsername)}?start=join_${esc(c.inviteCode)}</code></p>` : ''}
+      </div>`;
+        })()
+      : ''
+  }
 
   <div class="funnel" aria-label="Воронка">
     <div><b>${s.opened}</b><span>начали задание</span><div class="bar"><i style="width:100%"></i></div></div>
@@ -1856,6 +1915,14 @@ async function viewCampaign({ params, query }) {
           : empty('Ответов пока нет', 'Участники видят задание в каталоге.')
   }</div>`;
 
+  $('#inv-copy')?.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText($('#inv-link').value);
+      toast('Ссылка скопирована');
+    } catch {
+      $('#inv-link').select();
+    }
+  });
   $$('[data-tab]').forEach((b) => b.addEventListener('click', () => (location.hash = `#/company/campaigns/${c.id}?tab=${b.dataset.tab}`)));
   $$('[data-status]').forEach((b) =>
     b.addEventListener('click', async () => {

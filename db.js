@@ -24,6 +24,9 @@ const MIGRATIONS = [
   ['rewards', 'platform', 'TEXT'],
   ['users', 'avatar', 'TEXT'],
   ['redemptions', 'seller_net', 'INTEGER'],
+  ['campaigns', 'keywords', 'TEXT'],
+  ['campaigns', 'invite_code', 'TEXT'],
+  ['users', 'deleted_at', 'TEXT'],
   ['redemptions', 'seller_fee', 'INTEGER'],
 ];
 for (const [table, column, ddl] of MIGRATIONS) {

@@ -47,50 +47,44 @@ export async function viewDeck({ query } = {}) {
   const reg = `<a class="btn btn-primary btn-lg" href="#/register">Создать аккаунт</a>`;
   const login = `<a class="btn btn-ghost btn-lg" href="#/login">Войти</a>`;
   const stage = (model, variant = 0, d = 3.3) => `<div class="deck-3d view3d" data-3d data-model="${model}" data-variant="${variant}" data-wheel="focus" data-distance="${d}" aria-label="3D-модель. Перетащите, чтобы повернуть"></div>`;
+  const studio = `<a class="btn btn-ghost btn-lg" href="#/register?role=company">Я из студии</a>`;
+  // Модель unit-экономики считается из текущих правил платформы, а не из выдуманных цифр
+  const E = stats?.economy || {};
+  const kzt = E.abToKzt || 10, feeP = E.platformFeePercent || 20, sellP = E.sellerFeePercent || 10;
+  const R = 50, N = 30, fee = Math.ceil((R * feeP) / 100), per = R + fee;
   const slides = [
     {
-      k: 'National Founder Cup 2026 · Шымкент · команда SithOrder',
-      html: `<h1 class="deck-h1">Ваше внимание.<span>Ваша ценность.</span></h1>
-        <p class="deck-lead">ATTENTION BANK — место, где компании платят за ваше внимание честно: вы тестируете игры и приложения, а взамен получаете ключи игр, предметы и подписки.</p>
-        <div class="row">${reg}${login}</div>`,
+      k: 'Founder Cup 2026 · Шымкент · SithOrder',
+      html: `<h1 class="deck-h1">Честные плейтесты.<span>Реальные награды.</span></h1>
+        <p class="deck-lead">ATTENTION BANK помогает инди-студиям и продуктовым командам быстро получить проверенную обратную связь от живых игроков. Тестировщики получают за это ключи игр, предметы и подписки.</p>
+        <div class="row">${reg}${studio}${login}</div>`,
       model: ['rocket', 0, 3.5],
     },
     {
       k: 'Проблема',
-      html: `<h2 class="deck-h2">Внимание стало валютой. Но платят за него не вам.</h2>
+      html: `<h2 class="deck-h2">Студии выпускают игры вслепую.</h2>
         <div class="deck-points">
-          <div class="pt tilt"><b>Реклама</b><span>Забирает минуты каждый день — и ничего не даёт взамен.</span></div>
-          <div class="pt tilt"><b>Студии</b><span>Не могут найти честных тестировщиков: опросы заполняют наугад.</span></div>
-          <div class="pt tilt"><b>Люди</b><span>Хотят заранее знать, сколько времени отдают и что получат.</span></div>
+          <div class="pt tilt"><b>Тестировать не на ком</b><span>Друзья хвалят, а целевую аудиторию небольшой студии найти трудно и долго.</span></div>
+          <div class="pt tilt"><b>Опросы заполняют наугад</b><span>За деньги отвечают не глядя, а сейчас ещё и копируют текст из нейросетей.</span></div>
+          <div class="pt tilt"><b>Платить приходится за всех</b><span>Даже за ответы, которые потом выбрасывают.</span></div>
         </div>`,
       model: ['planet', 0, 3.6],
     },
     {
-      k: 'Как это работает',
-      html: `<h2 class="deck-h2">Четыре шага. Всё видно заранее.</h2>
+      k: 'Решение',
+      html: `<h2 class="deck-h2">Студия платит только за проверенный результат.</h2>
         <ol class="deck-steps">
-          <li class="tilt"><i>1</i><b>Выберите задание</b><span>Время и награда указаны до старта</span></li>
-          <li class="tilt"><i>2</i><b>Протестируйте продукт</b><span>Игра, прототип или видео — прямо в браузере</span></li>
-          <li class="tilt"><i>3</i><b>Ответ проверяется</b><span>Время, смысл, дубликаты, контрольный вопрос</span></li>
-          <li class="tilt"><i>4</i><b>AB Points на баланс</b><span>И сразу можно менять на награды</span></li>
+          <li class="tilt"><i>1</i><b>Студия создаёт тест</b><span>Ссылка на игру, вопросы, награда. Бюджет резервируется.</span></li>
+          <li class="tilt"><i>2</i><b>Игроки проходят продукт</b><span>Из каталога или по ссылке-приглашению студии</span></li>
+          <li class="tilt"><i>3</i><b>Платформа проверяет</b><span>Время, детали продукта, контрольный вопрос, шаблонный текст</span></li>
+          <li class="tilt"><i>4</i><b>Оплата за одобренное</b><span>За отклонённые не платите: место освобождается, остаток резерва возвращается</span></li>
         </ol>`,
       model: ['sputnik', 0, 3.6],
     },
     {
-      k: 'Что можно получить',
-      html: `<h2 class="deck-h2">Ключи игр. Предметы. Подписки.</h2>
-        <p class="deck-lead">Награды дают сами студии: ключи своих игр для Steam, Epic Games и Google Play, внутриигровые предметы, премиум-доступ.</p>
-        <div class="deck-rewards">${rewards
-          .slice(0, 6)
-          .map((r) => `<div class="dr tilt"><span class="plat">${esc(platformLabel(r.platform) || r.categoryLabel)}</span><b>${esc(r.title)}</b><span class="cost">${fmt(r.cost)}<small>AB</small></span>${r.demo ? '<span class="badge demo">демо</span>' : ''}</div>`)
-          .join('')}</div>
-        <p class="tiny muted">Хотим подключить Kaspi, YouTube Premium и другие сервисы — партнёрств пока нет, поэтому таких наград в каталоге нет.</p>`,
-      model: ['game_box', 0, 3.2],
-    },
-    {
       k: 'Настоящие продукты внутри',
-      html: `<h2 class="deck-h2">Не примеры. Работающие продукты.</h2>
-        <p class="deck-lead">Каждое демо-задание ведёт на настоящий продукт. Попробуйте прямо сейчас — без регистрации.</p>
+      html: `<h2 class="deck-h2">Не макеты. Работающие продукты.</h2>
+        <p class="deck-lead">Демо-задания ведут на продукты, которые мы сделали для проверки платформы. Попробуйте без регистрации.</p>
         <div class="deck-products">
           <a class="dp tilt" href="/play/steppe-runner/index.html" target="_blank" rel="noopener"><b>Steppe Runner</b><span>Играбельный раннер: 3 уровня, день и ночь</span><em>Играть →</em></a>
           <a class="dp tilt" href="/play/steppe-runner/store.html" target="_blank" rel="noopener"><b>Страница игры</b><span>Магазин и трейлер на движке игры</span><em>Открыть →</em></a>
@@ -101,50 +95,82 @@ export async function viewDeck({ query } = {}) {
       model: ['phone', 0, 3.2],
     },
     {
-      k: 'Честность',
-      html: `<h2 class="deck-h2">Проверка, которую нельзя обмануть. И которая не обманывает вас.</h2>
-        <div class="deck-points">
-          <div class="pt tilt"><b>Контрольные вопросы</b><span>В видео есть слово, которое видно только тому, кто смотрел.</span></div>
-          <div class="pt tilt"><b>Баланс = сумма транзакций</b><span>Каждое начисление и списание записано и сверяется автоматически.</span></div>
-          <div class="pt tilt"><b>AB Points — не деньги</b><span>Мы не обещаем вывод. Только обмен на реальные награды студий.</span></div>
+      k: 'Качество данных',
+      html: `<h2 class="deck-h2">Каждый ответ получает оценку 0–100. С причинами.</h2>
+        <div class="deck-points deck-points-6">
+          <div class="pt tilt"><b>Детали продукта</b><span>Студия задаёт слова, которые знает только тот, кто играл. Участник их не видит.</span></div>
+          <div class="pt tilt"><b>Контрольный вопрос</b><span>В видео есть деталь, заметная только при просмотре.</span></div>
+          <div class="pt tilt"><b>Вставка и скорость</b><span>Вставленный или набранный быстрее человека текст отмечается.</span></div>
+          <div class="pt tilt"><b>Шаблонный текст</b><span>Обороты, типичные для сгенерированных ответов, снижают оценку.</span></div>
+          <div class="pt tilt"><b>Время и дубли</b><span>Слишком быстро, одинаковые оценки, копия чужого ответа.</span></div>
+          <div class="pt tilt"><b>Решает человек</b><span>Флаги — подсказка. Финальное решение за студией, с причиной для участника.</span></div>
         </div>`,
       model: ['in_game', 2, 3.3],
     },
     {
-      k: 'Ваш прогресс',
-      html: `<h2 class="deck-h2">Видно всё: сколько заработали вчера и что впереди.</h2>
+      k: 'Что получает студия',
+      html: `<h2 class="deck-h2">Отчёт, который можно положить на стол команде.</h2>
         <div class="deck-points">
-          <div class="pt tilt"><b>🔥 Серия заходов</b><span>Сколько дней подряд вы с нами.</span></div>
-          <div class="pt tilt"><b>Статистика по дням</b><span>Вчера, позавчера, неделя, лучший день, AB за час внимания.</span></div>
-          <div class="pt tilt"><b>Маскот Аби</b><span>Ходит по экрану, подсказывает и отвечает на вопросы.</span></div>
+          <div class="pt tilt"><b>Воронка и стоимость</b><span>Сколько начали, сдали, одобрено; цена одного результата в тенге.</span></div>
+          <div class="pt tilt"><b>Ответы по вопросам</b><span>Распределение оценок, частые слова, цитаты, доля верных ответов.</span></div>
+          <div class="pt tilt"><b>Без персональных данных</b><span>Ни имён, ни email участников. Отчёт печатается в PDF, ответы выгружаются в CSV.</span></div>
         </div>`,
       model: ['trophy', 0, 3.3],
     },
     {
-      k: 'Для компаний',
-      html: `<h2 class="deck-h2">Платите только за проверенный результат.</h2>
-        <p class="deck-lead">Бюджет резервируется при запуске, а списывается только за одобренные ответы. Отчёты по вопросам, оценки качества и выгрузка в CSV.</p>
-        ${stats ? `<div class="deck-stats"><div><b>${fmt(stats.verifiedResults ?? 0)}</b><span>подтверждённых результатов</span></div><div><b>${fmt(stats.paidOut ?? 0)} AB</b><span>начислено участникам</span></div><div><b>${fmt(stats.activeCampaigns ?? 0)}</b><span>открытых заданий</span></div></div>` : ''}
-        <div class="row"><a class="btn btn-ghost btn-lg" href="#/register?role=company">Я представляю компанию</a></div>`,
-      model: ['game_access', 0, 3.2],
+      k: 'Что получает тестировщик',
+      html: `<h2 class="deck-h2">Ключи игр. Предметы. Подписки.</h2>
+        <p class="deck-lead">Время и награда видны до старта. AB Points — внутренние баллы платформы, не деньги: их меняют на награды, которые дают студии.</p>
+        <div class="deck-rewards">${rewards
+          .slice(0, 6)
+          .map((r) => `<div class="dr tilt"><span class="plat">${esc(platformLabel(r.platform) || r.categoryLabel)}</span><b>${esc(r.title)}</b><span class="cost">${fmt(r.cost)}<small>AB</small></span>${r.demo ? '<span class="badge demo">демо</span>' : ''}</div>`)
+          .join('')}</div>
+        <p class="tiny muted">Все награды в каталоге сейчас демонстрационные. Партнёрств с Kaspi, Steam или YouTube у нас нет — названия платформ указывают, где работает ключ.</p>`,
+      model: ['game_box', 0, 3.2],
     },
     {
-      k: 'Экономика',
-      html: `<h2 class="deck-h2">Замкнутый круг, где выигрывают все.</h2>
-        <div class="eco-mini">
-          <div class="tilt"><b>Компании</b><span>Пополняют бюджет: 1 AB = 10 ₸. Платят только за одобренный результат.</span></div>
-          <div class="tilt"><b>Участники</b><span>Получают AB за внимание и меняют их на награды.</span></div>
-          <div class="tilt"><b>Продавцы наград</b><span>Получают 90% стоимости каждого обмена и выводят выручку в тенге.</span></div>
-          <div class="tilt"><b>Платформа</b><span>20% с результата и 10% с продажи. Баллы из воздуха не появляются.</span></div>
-        </div>
-        <div class="row"><a class="btn btn-ghost btn-lg" href="#/economy">Живые цифры экономики →</a></div>`,
+      k: 'Unit-экономика · модель',
+      html: `<h2 class="deck-h2">Один тест: ${N} игроков по ${R} AB.</h2>
+        <table class="deck-table">
+          <tr><td>Студия платит за одобренный результат</td><td>${R} + ${fee} AB = <b>${fmt(per * kzt)} ₸</b></td></tr>
+          <tr><td>Весь тест, ${N} результатов</td><td><b>${fmt(per * N * kzt)} ₸</b></td></tr>
+          <tr><td>Выручка платформы с теста (${feeP}%)</td><td><b>${fmt(fee * N * kzt)} ₸</b></td></tr>
+          <tr><td>Если игроки обменяют баллы на ключи этой же студии</td><td>студии вернётся ${fmt(Math.floor(R * N * (100 - sellP) / 100) * kzt)} ₸, платформе +${sellP}%</td></tr>
+        </table>
+        <p class="tiny muted">Это модель по действующим правилам платформы (1 AB = ${kzt} ₸, комиссия ${feeP}% с результата и ${sellP}% с продажи награды), а не фактическая выручка: платящих клиентов у нас пока нет.</p>
+        <div class="row"><a class="btn btn-ghost" href="#/economy">Калькулятор и живой баланс →</a></div>`,
       model: ['coin', 0, 3.2],
     },
     {
-      k: 'Начнём',
-      html: `<h2 class="deck-h1" style="font-size:clamp(2.2rem,6vw,4.6rem)">Ваше внимание<span>чего-то стоит.</span></h2>
-        <p class="deck-lead">Создайте аккаунт за минуту — короткое обучение покажет, где что находится.</p>
-        <div class="row">${reg}${login}</div>`,
+      k: 'Рынок и альтернативы',
+      html: `<h2 class="deck-h2">Похожие задачи решают по-разному.</h2>
+        <table class="deck-table deck-cmp">
+          <tr><th>Подход · пример</th><th>Чем мы отличаемся</th></tr>
+          <tr><td><b>Сервисы плейтестов</b><small>Playtestcloud</small></td><td>Небольшие бюджеты, русский и казахский язык, оплата только за одобренное</td></tr>
+          <tr><td><b>UX-исследования</b><small>UserTesting</small></td><td>Фокус на играх и их аудитории, а не на сайтах</td></tr>
+          <tr><td><b>Краудсорсинг микрозадач</b><small>Toloka</small></td><td>Игрок тестирует продукт целиком, а не размечает данные</td></tr>
+          <tr><td><b>Офферволы в играх</b><small>бонус за установку</small></td><td>Студия получает ответы и отчёт, а не просто установку</td></tr>
+        </table>
+        <p class="tiny muted">Сравнение по позиционированию; цены и метрики других компаний мы не приводим.</p>`,
+      model: ['subscription', 1, 3.2],
+    },
+    {
+      k: 'Дорожная карта · планы',
+      html: `<h2 class="deck-h2">Что уже работает и что дальше.</h2>
+        <div class="eco-mini">
+          <div class="tilt"><b>Работает сейчас</b><span>Сайт, PWA, Telegram-бот и Mini App, бюджет с резервом, проверка ответов, отчёт студии, ссылки-приглашения.</span></div>
+          <div class="tilt"><b>Шаг 1 · пилот</b><span>1 студия и 20–30 тестировщиков, реальный тест и отчёт.</span></div>
+          <div class="tilt"><b>Шаг 2 · право</b><span>Консультация юриста: статус баллов, договор с продавцами наград, хранение персональных данных в РК.</span></div>
+          <div class="tilt"><b>Шаг 3 · инфраструктура</b><span>Постоянная база данных и оплата бюджета студией онлайн.</span></div>
+        </div>`,
+      model: ['game_access', 0, 3.2],
+    },
+    {
+      k: 'Пилот',
+      html: `<h2 class="deck-h1" style="font-size:clamp(2.2rem,6vw,4.4rem)">Ищем первые студии<span>для пилота.</span></h2>
+        <p class="deck-lead">Разрабатываете игру или приложение? Создайте аккаунт компании и запустите тест — или станьте тестировщиком и получайте награды.</p>
+        ${stats ? `<div class="deck-stats"><div><b>${fmt(stats.verifiedResults ?? 0)}</b><span>подтверждённых результатов в демо</span></div><div><b>${fmt(stats.activeCampaigns ?? 0)}</b><span>открытых заданий</span></div></div>` : ''}
+        <div class="row">${studio}${reg}</div>`,
       model: ['rocket', 0, 3.5],
     },
   ];
@@ -354,8 +380,8 @@ const MASCOT_SVG = `<svg viewBox="0 0 100 120" aria-hidden="true">
     <circle cx="50" cy="78" r="22.5" fill="url(#mCoin)" stroke="#FFF3B5" stroke-width="1" stroke-opacity=".8"/>
     <circle cx="50" cy="78" r="19.5" fill="none" stroke="#C99406" stroke-width=".7" opacity=".6"/>
     <path d="M37 67 A18 18 0 0 1 58 60.5" stroke="#FFFBE0" stroke-width="2" fill="none" stroke-linecap="round" opacity=".7"/>
-    <text x="50" y="86" text-anchor="middle" font-family="'Arial Black','Geologica',system-ui,sans-serif" font-weight="900" font-size="21" letter-spacing="-.6" fill="none" stroke="#EAF7FF" stroke-width="5.2" stroke-linejoin="round">AT</text>
-    <text x="50" y="86" text-anchor="middle" font-family="'Arial Black','Geologica',system-ui,sans-serif" font-weight="900" font-size="21" letter-spacing="-.6" fill="url(#mTxt)" stroke="#1D57B5" stroke-width="2.2" stroke-linejoin="round" paint-order="stroke">AT</text>
+    <text x="50" y="86" text-anchor="middle" font-family="'Arial Black','Geologica',system-ui,sans-serif" font-weight="900" font-size="21" letter-spacing="-.6" fill="none" stroke="#EAF7FF" stroke-width="5.2" stroke-linejoin="round">AB</text>
+    <text x="50" y="86" text-anchor="middle" font-family="'Arial Black','Geologica',system-ui,sans-serif" font-weight="900" font-size="21" letter-spacing="-.6" fill="url(#mTxt)" stroke="#1D57B5" stroke-width="2.2" stroke-linejoin="round" paint-order="stroke">AB</text>
     <path d="M31.5 72 l1 2.6 2.6 1 -2.6 1 -1 2.6 -1 -2.6 -2.6 -1 2.6 -1 z" fill="#fff"/><path d="M68.5 65 l.8 2 2 .8 -2 .8 -.8 2 -.8 -2 -2 -.8 2 -.8 z" fill="#fff" opacity=".9"/>
     <g class="arm l"><path d="M24 70 Q15 64 12 54" stroke="url(#mLimb)" stroke-width="4.6" fill="none" stroke-linecap="round"/>
       <g fill="#F6CD22"><ellipse cx="11" cy="48.5" rx="5.6" ry="5"/><rect x="5.2" y="38" width="2.6" height="9" rx="1.3" transform="rotate(-18 6.5 42)"/><rect x="8.4" y="36" width="2.6" height="10" rx="1.3" transform="rotate(-6 9.7 41)"/><rect x="11.6" y="36" width="2.6" height="10" rx="1.3" transform="rotate(6 12.9 41)"/><rect x="14.6" y="38" width="2.6" height="9" rx="1.3" transform="rotate(18 15.9 42)"/><rect x="15.5" y="46" width="2.6" height="7" rx="1.3" transform="rotate(55 16.8 49.5)"/></g></g>
@@ -372,10 +398,13 @@ function phrases() {
   const path = location.hash || '#/';
   const list = [];
   if (!me) {
-    list.push('Сәлем! Я Аби. Листай презентацию кнопкой «Далее» →', 'Игры в заданиях настоящие — их можно попробовать без регистрации!', 'Нажми на меня, если есть вопрос 🙂', 'AB Points — не деньги, зато честно меняются на награды.');
+    const onDeck = /^#\/(\?|about|$)/.test(path) || path === '#/';
+    if (onDeck) list.push('Сәлем! Я Аби. Листай презентацию кнопкой «Далее» →');
+    else list.push('Сәлем! Я Аби. Нажми на меня, если есть вопрос 🙂');
+    list.push('Игры в заданиях настоящие — их можно попробовать без регистрации!', 'AB Points — не деньги, зато честно меняются на награды.');
     return list;
   }
-  if (me.role === 'company') return ['Платите только за одобренные ответы — остальное вернётся в бюджет.', 'Контрольный вопрос в задании отсеивает тех, кто не смотрел видео.', 'Нажмите на меня — расскажу, как создать кампанию.'];
+  if (me.role === 'company') return ['Платите только за одобренные ответы — остальное вернётся в бюджет.', 'Впишите «детали продукта» — так видно, кто действительно играл.', 'Ссылка-приглашение на странице кампании приведёт ваших игроков прямо в задание.', 'Отчёт для студии можно сохранить в PDF.'];
   const st = s.streak?.current || 0;
   if (st >= 2) list.push(`🔥 ${st} ${D.plural(st, 'день', 'дня', 'дней')} подряд! Не сбавляй темп.`);
   else list.push('Заходи завтра — начнётся серия 🔥');
@@ -398,9 +427,12 @@ export function mountMascot() {
   mascot.x = Math.min(innerWidth - 120, 60 + Math.random() * 200);
   el.querySelector('.mascot-btn').onclick = () => openChat();
   // При переходе на другую страницу чат закрывается: вопросы в нём зависят от страницы
-  addEventListener('hashchange', () => document.querySelector('.mascot-chat') && closeChat());
-  if (!REDUCED) mascot.raf = requestAnimationFrame(walk);
-  else el.style.transform = `translateX(${mascot.x}px)`;
+  addEventListener('hashchange', () => {
+    if (document.querySelector('.mascot-chat')) closeChat();
+    const b = mascot.el?.querySelector('.mascot-say');
+    if (b) b.hidden = true; // реплика относилась к прошлой странице
+  });
+  mascot.raf = requestAnimationFrame(walk); // при «уменьшить движение» Аби стоит на месте, но не закрывает текст
   setTimeout(() => say(phrases()[0]), 2500);
   mascot.sayTimer = setInterval(() => {
     if (!mascot.open && !document.hidden) {
@@ -422,17 +454,31 @@ function walk(t) {
   mascot.last = t;
   const el = mascot.el;
   if (!el) return;
-  const maxX = innerWidth - 100;
-  if (mascot.pause > 0 || mascot.open) {
+  // В презентации Аби гуляет по нижнему краю 3D-панели, чтобы не закрывать текст и кнопки
+  let minX = 12, maxX = innerWidth - 100;
+  const zone = document.querySelector('.deck .slide:not([hidden]) .slide-art');
+  const r = zone?.getBoundingClientRect();
+  if (r && r.width > 120 && r.bottom > 140 && r.bottom <= innerHeight) {
+    const w = el.offsetWidth || 88;
+    minX = r.left + 10;
+    maxX = Math.max(minX, r.right - w - 10);
+    el.style.bottom = `${Math.round(innerHeight - r.bottom + 8)}px`;
+    el.classList.add('in-deck');
+  } else if (el.classList.contains('in-deck')) {
+    el.style.bottom = '';
+    el.classList.remove('in-deck');
+  }
+  if (REDUCED || mascot.pause > 0 || mascot.open) {
     mascot.pause -= dt;
     el.classList.remove('walking');
   } else {
     el.classList.add('walking');
     mascot.x += mascot.dir * mascot.speed * dt;
     if (mascot.x > maxX) (mascot.x = maxX), (mascot.dir = -1), (mascot.pause = 1.5);
-    if (mascot.x < 12) (mascot.x = 12), (mascot.dir = 1), (mascot.pause = 1.5);
+    if (mascot.x < minX) (mascot.x = minX), (mascot.dir = 1), (mascot.pause = 1.5);
     if (Math.random() < dt * 0.12) mascot.pause = 2 + Math.random() * 3;
   }
+  mascot.x = Math.min(Math.max(mascot.x, minX), maxX);
   el.style.transform = `translateX(${mascot.x}px)`;
   el.querySelector('.mascot-btn').style.transform = `scaleX(${mascot.dir})`;
   mascot.raf = requestAnimationFrame(walk);
@@ -464,7 +510,13 @@ const A = {
   goal: ['Зачем «Сделать целью»?', 'Цель появится на главной с полосой прогресса и заданиями, которые быстрее всего к ней приведут.', ['redeem', 'tasks']],
   stock: ['Почему у наград есть остаток?', 'Студии выдают ограниченное число ключей и предметов. Если остаток 0 — награду нельзя получить, мы её так и показываем.', ['redeem']],
   tasks: ['Как выполнить задание?', 'Нажмите «Начать», откройте продукт кнопкой «Открыть продукт», пройдите его и ответьте на вопросы. Время и награда видны заранее.', ['verify', 'attention', 'reject']],
-  verify: ['Как проверяют ответы?', 'Автопроверка смотрит время выполнения, осмысленность текста, дубликаты и контрольные вопросы. Хорошие ответы в некоторых заданиях одобряются сразу, остальные смотрит компания.', ['reject', 'attention']],
+  verify: ['Как проверяют ответы?', 'Автопроверка смотрит время выполнения, осмысленность текста, дубликаты, контрольные вопросы и то, упомянуты ли детали самого продукта. Вставленный или шаблонный текст снижает оценку. Хорошие ответы в некоторых заданиях одобряются сразу, остальные смотрит компания.', ['reject', 'attention', 'ai']],
+  ai: ['Можно ответить с помощью нейросети?', 'Можно, но это заметно: шаблонные обороты, вставленный текст и ответ без деталей игры снижают оценку, и компания может отклонить ответ. Пишите своими словами, что видели сами — это быстрее одобряют.', ['verify', 'reject']],
+  privacy: ['Что компания знает обо мне?', 'Ваше имя, ответы на её задания и оценку качества. Email, ник в Telegram и баланс компания не видит. В отчёте для студии нет даже имён.', ['delete']],
+  delete: ['Как удалить аккаунт?', 'В «Настройках» внизу — «Удалить аккаунт». Имя, email и привязка Telegram стираются сразу. Перед этим можно скачать все свои данные одним файлом.', ['privacy']],
+  invite: ['Как позвать своих тестировщиков?', 'На странице кампании есть ссылка-приглашение. Отправьте её в чат клуба или сообщества: человек зарегистрируется и сразу попадёт в ваше задание.', ['report', 'keywords']],
+  report: ['Что будет в отчёте для студии?', 'Воронка, цена результата в тенге, средние оценки и их распределение, частые слова и цитаты, сигналы проверки. Без имён и email. Кнопка «Печать / PDF» сохранит его файлом.', ['invite', 'keywords']],
+  keywords: ['Зачем «детали продукта»?', 'Впишите слова, которые назовёт только тот, кто действительно играл: имя героя, препятствие, механику. Участник их не видит. Ответ без них получает флаг и более низкую оценку.', ['invite', 'report']],
   attention: ['Что за контрольный вопрос?', 'Это проверка внимания: например, слово, которое появляется в середине трейлера. Правильный ответ знает только тот, кто действительно посмотрел.', ['video']],
   video: ['Как пройти видео-тест?', 'Посмотрите ролик целиком без перемотки: плеер считает реально просмотренную часть. Запомните контрольное слово и ответьте на вопросы.', ['attention']],
   reject: ['Почему ответ могут отклонить?', 'Слишком быстро, коротко, скопировано или неверный контрольный вопрос. Причина всегда видна в «Активности». Подробные честные ответы одобряют быстрее.', ['verify']],
@@ -485,12 +537,18 @@ const A = {
 function chatMenu() {
   const h = location.hash || '#/';
   const me = D.state.me;
-  if (!me) return h.startsWith('#/economy') ? ['eco', 'check', 'money', 'what'] : ['what', 'free', 'get', 'real', 'start'];
-  if (me.role === 'company') return h.includes('revenue') || h.startsWith('#/economy') ? ['revenue', 'payout', 'eco', 'check'] : ['campaign', 'pay', 'attention', 'revenue'];
+  if (h.startsWith('#/privacy')) return ['privacy', 'delete', 'money'];
+  if (!me) return h.startsWith('#/economy') ? ['eco', 'check', 'money', 'what'] : h.startsWith('#/join') ? ['what', 'free', 'verify', 'start'] : ['what', 'free', 'get', 'real', 'start'];
+  if (me.role === 'company')
+    return h.includes('revenue') || h.startsWith('#/economy')
+      ? ['revenue', 'payout', 'eco', 'check']
+      : h.startsWith('#/company/campaigns/')
+        ? ['invite', 'report', 'keywords', 'attention']
+        : ['campaign', 'keywords', 'pay', 'invite', 'revenue'];
   if (h.startsWith('#/rewards')) return ['redeem', 'where', 'goal', 'stock', 'kaspi'];
-  if (h.startsWith('#/tasks')) return ['tasks', 'verify', 'attention', 'video', 'reject'];
+  if (h.startsWith('#/tasks')) return ['tasks', 'verify', 'ai', 'attention', 'reject'];
   if (h.startsWith('#/stats') || h.startsWith('#/activity')) return ['stats', 'abhour', 'streak', 'challenge'];
-  if (h.startsWith('#/profile') || h.startsWith('#/settings')) return ['tg', 'password', 'avatar', 'export'];
+  if (h.startsWith('#/profile') || h.startsWith('#/settings')) return ['tg', 'password', 'export', 'privacy', 'delete'];
   if (h.startsWith('#/economy')) return ['eco', 'check', 'money'];
   return ['balance', 'redeem', 'streak', 'challenge', 'money'];
 }
@@ -803,4 +861,125 @@ export function reveal(root = document) {
     el.classList.add('rv');
     io.observe(el);
   });
+}
+
+// ===================================================================
+//              ОТЧЁТ ДЛЯ СТУДИИ (печатается в PDF из браузера)
+// ===================================================================
+export async function viewReport({ params }) {
+  const r = await D.api(`/api/company/campaigns/${params.id}/report`);
+  const c = r.campaign;
+  const pct = (v) => (v === null || v === undefined ? '—' : `${v}%`);
+  const basisLabel = r.basis === 'approved' ? 'по одобренным ответам' : 'по отправленным ответам (одобренных пока нет)';
+  const q = r.questions
+    .map((x, n) => {
+      let body = '';
+      if (x.type === 'rating') {
+        const max = Math.max(1, ...x.dist);
+        body = `<div class="rep-rating"><b class="num">${x.avg ?? '—'}</b><span>из 5 · ${x.count} ${D.plural(x.count, 'ответ', 'ответа', 'ответов')}</span></div>
+          <div class="rep-dist">${x.dist.map((v, k) => `<div><span>${k + 1}</span><i style="--w:${(v / max) * 100}%"></i><em>${v}</em></div>`).join('')}</div>`;
+      } else if (x.type === 'choice') {
+        const tot = Math.max(1, x.count);
+        body = `<div class="rep-dist">${x.options.map((o) => `<div class="${o.correct ? 'ok' : ''}"><span>${esc(o.option)}${o.correct ? ' ✓' : ''}</span><i style="--w:${(o.count / tot) * 100}%"></i><em>${o.count}</em></div>`).join('')}</div>
+          ${x.correctRate !== undefined ? `<p class="small">Верно ответили: <b>${pct(x.correctRate)}</b></p>` : ''}`;
+      } else {
+        body = `${x.topWords?.length ? `<p class="small muted" style="margin:0 0 6px">Чаще всего упоминали:</p><div class="rep-words">${x.topWords.map((w) => `<span>${esc(w.word)} <b>${w.n}</b></span>`).join('')}</div>` : ''}
+          ${x.quotes?.length ? `<div class="rep-quotes">${x.quotes.map((t) => `<blockquote>${esc(t)}</blockquote>`).join('')}</div>` : '<p class="muted small">Ответов пока нет.</p>'}`;
+      }
+      return `<section class="rep-q"><h3><span class="num">${n + 1}.</span> ${esc(x.label)}</h3>${body}</section>`;
+    })
+    .join('');
+  D.app.innerHTML = `
+  <div class="report">
+    <div class="rep-actions no-print"><a class="btn btn-ghost" href="#/company/campaigns/${c.id}">← К кампании</a><button class="btn btn-primary" type="button" id="rep-print">Печать / PDF</button></div>
+    <header class="rep-head">
+      <p class="kicker">Отчёт ATTENTION BANK · ${new Date(r.generatedAt).toLocaleString('ru-RU', { dateStyle: 'long', timeStyle: 'short' })}</p>
+      <h1>${esc(c.title)}</h1>
+      <p class="muted">${esc(c.company)} · ${esc(c.categoryLabel)} · награда ${c.reward} AB${c.demo ? ' · <b>демонстрационные данные</b>' : ''}</p>
+    </header>
+    <div class="rep-kpis">
+      <div><span>Начали</span><b class="num">${r.funnel.started}</b></div>
+      <div><span>Сдали</span><b class="num">${r.funnel.submitted}</b><em>${pct(r.completionRate)} дошли до конца</em></div>
+      <div><span>Одобрено</span><b class="num">${r.funnel.approved}</b><em>${pct(r.approvalRate)} от проверенных</em></div>
+      <div><span>Ждут проверки</span><b class="num">${r.funnel.pending}</b></div>
+      <div><span>Средняя оценка качества</span><b class="num">${r.avgScore ?? '—'}</b><em>из 100</em></div>
+      <div><span>Медиана времени</span><b class="num">${r.medianMinutes ?? '—'}</b><em>минут</em></div>
+      <div><span>Цена результата</span><b class="num">${fmt(r.costPerResultKzt)} ₸</b><em>награда + комиссия</em></div>
+      <div><span>Потрачено</span><b class="num">${fmt(r.spentKzt)} ₸</b><em>${fmt(r.spentAb)} AB, только за одобренное</em></div>
+    </div>
+    <h2>Ответы <small class="muted">${basisLabel}</small></h2>
+    ${q || '<p class="muted">В кампании нет вопросов.</p>'}
+    <h2>Проверка качества</h2>
+    ${r.flags.length ? `<table class="table"><thead><tr><th>Сигнал</th><th class="r">Ответов</th></tr></thead><tbody>${r.flags.map((f) => `<tr><td>${esc(f.label)}</td><td class="r">${f.n}</td></tr>`).join('')}</tbody></table><p class="tiny muted">Сигналы снижают оценку качества и подсказывают, какие ответы перепроверить. Решение об оплате принимает студия.</p>` : '<p class="muted">Подозрительных сигналов не найдено.</p>'}
+    <footer class="rep-foot tiny muted">В отчёте нет имён, email и контактов участников. Полные ответы — в выгрузке CSV на странице кампании.</footer>
+  </div>`;
+  D.app.querySelector('#rep-print').onclick = () => print();
+}
+
+// ===================================================================
+//             ПРИГЛАШЕНИЕ ОТ СТУДИИ: #/join/<код>
+// ===================================================================
+export async function viewJoin({ params }) {
+  const j = await D.api(`/api/join/${encodeURIComponent(params.code)}`);
+  const me = D.state.me;
+  if (me?.role === 'user' && j.status === 'active') {
+    location.replace(`#/tasks/${j.campaignId}`);
+    return;
+  }
+  try {
+    sessionStorage.setItem('ab_join', String(j.campaignId));
+  } catch {}
+  const open = j.status === 'active' && j.slotsLeft > 0;
+  D.app.innerHTML = `
+  <section class="join panel">
+    <p class="kicker">Приглашение${j.companyDemo ? ' · демо-студия' : ''}</p>
+    <h1>${esc(j.company)} приглашает протестировать «${esc(j.title)}»</h1>
+    <p class="lead">${esc(j.description)}</p>
+    <div class="join-facts">
+      <div><span>Награда</span><b>+${j.reward} AB</b></div>
+      <div><span>Время</span><b>~${j.estMinutes} мин</b></div>
+      <div><span>Тип</span><b>${esc(j.categoryLabel)}</b></div>
+      <div><span>Осталось мест</span><b>${j.slotsLeft}</b></div>
+    </div>
+    ${
+      open
+        ? me
+          ? `<p class="muted">Вы вошли как компания. Задания проходят участники — войдите под аккаунтом участника.</p>`
+          : `<div class="row"><a class="btn btn-primary btn-lg" href="#/register">Создать аккаунт и начать</a><a class="btn btn-ghost btn-lg" href="#/login">У меня есть аккаунт</a></div>
+             <p class="tiny muted">После входа вы сразу попадёте в это задание. AB Points — баллы платформы, их меняют на награды в каталоге.</p>`
+        : `<p class="muted">Набор в это задание закрыт. <a href="#/tasks">Посмотрите другие задания</a>.</p>`
+    }
+  </section>`;
+}
+
+// ===================================================================
+//                      ПОЛИТИКА КОНФИДЕНЦИАЛЬНОСТИ
+// ===================================================================
+export function viewPrivacy() {
+  D.app.innerHTML = `
+  <article class="legal panel">
+    <p class="kicker">Простыми словами</p>
+    <h1>Какие данные мы храним и зачем</h1>
+    <p class="muted small">Это учебный проект для National Founder Cup 2026. До запуска с реальными пользователями текст будет проверен юристом.</p>
+    <h2>Что мы храним</h2>
+    <ul>
+      <li><b>Аккаунт:</b> имя, email, пароль в виде хеша scrypt (сам пароль мы не видим), аватар.</li>
+      <li><b>Задания:</b> ваши ответы, время начала и отправки, оценку качества и её причины.</li>
+      <li><b>Сигналы качества:</b> был ли текст вставлен из буфера и сколько времени его набирали. Содержимое буфера обмена мы не читаем и не храним.</li>
+      <li><b>Баллы:</b> каждую операцию начисления и списания — баланс всегда равен их сумме.</li>
+      <li><b>Telegram</b> (если привязали): числовой id чата и имя пользователя — чтобы присылать уведомления.</li>
+    </ul>
+    <h2>Что видит компания</h2>
+    <p>Только ответы на свои задания, оценку качества, ваше имя, отметку «Telegram подтверждён» и уровень доверия в списке на проверку. Email, ник в Telegram и баланс компания не видит. Отчёт для студии и выгрузка CSV не содержат имён, email и контактов.</p>
+    <h2>Чего мы не делаем</h2>
+    <ul>
+      <li>Не продаём и не передаём данные третьим лицам.</li>
+      <li>Не показываем рекламу и не подключаем рекламные или аналитические сервисы. Единственный внешний ресурс — шрифты Google Fonts.</li>
+      <li>Не обещаем вывод AB Points в деньги: это внутренние баллы платформы.</li>
+    </ul>
+    <h2>Ваши права</h2>
+    <p>В <a href="#/settings">настройках</a> можно скачать все свои данные одним файлом, сменить пароль и удалить аккаунт. Telegram отвязывается в профиле или командой <code>/unlink</code> в боте. При удалении имя, email, аватар и привязка Telegram стираются; записи о баллах остаются обезличенными, чтобы сходилась бухгалтерия платформы.</p>
+    <h2>Где хранятся данные</h2>
+    <p>В демо-версии — в базе SQLite на сервере хостинга; на бесплатном тарифе она может обнуляться при перезапуске. Для реального запуска планируется хранение на территории Казахстана в соответствии с законом РК «О персональных данных и их защите».</p>
+  </article>`;
 }

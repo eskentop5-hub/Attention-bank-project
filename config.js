@@ -63,5 +63,7 @@ export const config = {
   tzOffsetMin: num('TZ_OFFSET_MIN', 300),
   // Ежедневный челлендж: сколько заданий в день (только прогресс и серия — баллы за него не начисляются)
   dailyChallenge: num('DAILY_CHALLENGE_TASKS', 3),
+  // Не давать бесплатному Render засыпать (при засыпании стирается база). По умолчанию — для адресов *.onrender.com
+  keepAwake: env('KEEP_AWAKE', '') === '1' || (env('KEEP_AWAKE', '') !== '0' && /onrender\.com/.test(env('PUBLIC_URL', ''))),
   sessionDays: 30,
 };

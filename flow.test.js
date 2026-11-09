@@ -665,3 +665,103 @@ test('Telegram v2: Mini App вход по подписи, задание в ча
   await sendReminders({ force: true });
   assert.ok(!sent.some((m) => m.chat_id === '555'), 'после отключения напоминание не приходит');
 });
+
+test('защита данных: детали продукта, вставка текста, скорость набора, шаблонный текст; приглашение и отчёт', async () => {
+  let r = await company('POST', '/api/company/campaigns', {
+    title: 'Плейтест с деталями',
+    description: 'Пройдите первый уровень игры и расскажите, что запомнилось.',
+    category: 'game_testing',
+    reward: 10,
+    maxParticipants: 10,
+    minSeconds: 0,
+    keywords: 'овраг, монет, всадник',
+    questions: [
+      { type: 'rating', label: 'Оценка' },
+      { type: 'text', label: 'Что запомнилось?', minLength: 20 },
+    ],
+  });
+  assert.equal(r.status, 200);
+  const cid = r.data.campaign.id;
+  assert.deepEqual(r.data.campaign.keywords, ['овраг', 'монет', 'всадник'], 'компания видит детали');
+  const code = r.data.campaign.inviteCode;
+  assert.match(code, /^[A-Z0-9]{8}$/);
+
+  // Приглашение: публичная карточка без вопросов и деталей
+  r = await fetch(`${base}/api/join/${code.toLowerCase()}`).then((x) => x.json());
+  assert.equal(r.campaignId, cid);
+  assert.equal(r.questions, undefined);
+  assert.equal(r.keywords, undefined);
+  assert.equal((await fetch(`${base}/api/join/NOPE1234`)).status, 404);
+
+  const mk = async (email) => {
+    const c = client();
+    await c('POST', '/api/auth/register', { email, password: 'Steppe2024x', name: 'Тестер', consent: true, ageConfirmed: true });
+    await c('POST', `/api/tasks/${cid}/start`, {});
+    return c;
+  };
+  // Участник не видит детали продукта
+  const t1 = await mk('d1@test.kz');
+  r = await t1('GET', `/api/tasks/${cid}`);
+  assert.equal(r.data.task.keywords, undefined);
+
+  // 1) честный напечатанный ответ с деталями — без новых флагов
+  r = await t1('POST', `/api/tasks/${cid}/submit`, { answers: { q1: 4, q2: 'Прыгал через овраг ночью, монеты собирал по дугам' }, meta: { pasted: [], typingMs: { q2: 20000 } } });
+  for (const f of ['pasted_text', 'typing_too_fast', 'ai_style', 'no_specifics']) assert.ok(!r.data.flags.includes(f), f);
+
+  // 2) ответ без деталей продукта, вставленный из буфера
+  const t2 = await mk('d2@test.kz');
+  r = await t2('POST', `/api/tasks/${cid}/submit`, { answers: { q1: 5, q2: 'Хорошая игра, понравилось управление и графика в целом' }, meta: { pasted: ['q2'] } });
+  assert.ok(r.data.flags.includes('no_specifics'));
+  assert.ok(r.data.flags.includes('pasted_text'));
+
+  // 3) шаблонный «нейросетевой» текст, набранный нечеловечески быстро
+  const t3 = await mk('d3@test.kz');
+  const gpt = 'В целом, игра погружает в увлекательный игровой процесс с оврагами. Стоит отметить уникальный стиль. Кроме того, управление интуитивно понятное. Таким образом, общее впечатление положительное.';
+  r = await t3('POST', `/api/tasks/${cid}/submit`, { answers: { q1: 5, q2: gpt }, meta: { typingMs: { q2: 2000 } } });
+  assert.ok(r.data.flags.includes('ai_style'));
+  assert.ok(r.data.flags.includes('typing_too_fast'));
+  assert.ok(r.data.score < 50);
+
+  // Отчёт для студии: воронка, распределения, флаги, без имён участников
+  r = await company('GET', `/api/company/campaigns/${cid}/report`);
+  assert.equal(r.status, 200);
+  assert.equal(r.data.funnel.submitted, 3);
+  assert.ok(r.data.questions[0].dist.reduce((s, n) => s + n, 0) >= 1);
+  assert.ok(r.data.flags.some((f) => f.id === 'ai_style'));
+  assert.ok(!JSON.stringify(r.data).includes('d1@test.kz'), 'в отчёте нет email участников');
+  assert.equal((await user('GET', `/api/company/campaigns/${cid}/report`)).status, 403);
+});
+
+test('v10: удаление аккаунта участника обезличивает данные и не ломает бухгалтерию', async () => {
+  const c = client();
+  let r = await c('POST', '/api/auth/register', { email: 'bye@test.kz', password: 'Steppe2024x', name: 'Уходящий', consent: true, ageConfirmed: true });
+  assert.equal(r.status, 200);
+  assert.equal((await c('POST', '/api/me/delete', { password: 'wrong-pass1' })).status, 400);
+  r = await c('POST', '/api/me/delete', { password: 'Steppe2024x' });
+  assert.equal(r.status, 200);
+  assert.equal((await c('GET', '/api/me')).data.user, null, 'сессия завершена');
+  r = await client()('POST', '/api/auth/login', { email: 'bye@test.kz', password: 'Steppe2024x' });
+  assert.ok(r.status >= 400 && !r.data.user, 'войти снова нельзя');
+  const row = db.prepare("SELECT email, name, deleted_at FROM users WHERE name = 'Удалённый участник'").get();
+  assert.ok(row && row.deleted_at && !row.email.includes('bye@'));
+  assert.equal((await company('POST', '/api/me/delete', { password: 'x' })).status, 403, 'компании удаляются через команду');
+  assert.ok(verifyAllLedgers().ok);
+  // Модель unit-экономики в презентации считается из настроек
+  r = await client()('GET', '/api/stats');
+  assert.equal(r.data.economy.abToKzt, config.economy.abToKzt);
+  assert.equal(r.data.economy.platformFeePercent, config.economy.platformFeePercent);
+});
+
+test('v10: приглашение через Telegram-бота: /start join_<код>', async () => {
+  const co = db.prepare("SELECT invite_code FROM campaigns WHERE status = 'active' AND invite_code IS NOT NULL LIMIT 1").get();
+  assert.ok(co, 'есть активная кампания с кодом');
+  sent.length = 0;
+  await handleUpdate({ update_id: 9101, message: { message_id: 1, chat: { id: 777001, type: 'private' }, from: { id: 777001, username: 'guest' }, text: `/start join_${co.invite_code}` } });
+  await tick();
+  const m = sent.find((x) => x.method === 'sendMessage');
+  assert.ok(m && /AB Points/.test(m.text), 'бот показал задание');
+  sent.length = 0;
+  await handleUpdate({ update_id: 9102, message: { message_id: 2, chat: { id: 777001, type: 'private' }, from: { id: 777001 }, text: '/start join_NOPE' } });
+  await tick();
+  assert.ok(sent.some((x) => /не найдено/.test(x.text || '')));
+});

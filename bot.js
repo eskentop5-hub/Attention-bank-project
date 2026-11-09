@@ -120,6 +120,19 @@ export async function handleUpdate(update) {
     }
     case '/start': {
       const code = (args[0] || '').toUpperCase();
+      // Приглашение студии: t.me/<бот>?start=join_<КОД> — показываем задание и ведём в него
+      if (code.startsWith('JOIN_')) {
+        const inv = code.slice(5);
+        const c = one('SELECT id, title, description, reward, est_minutes, status FROM campaigns WHERE invite_code = ?', inv);
+        if (!c || c.status !== 'active') return reply(chatId, '⚠️ Приглашение не найдено или набор закрыт. Другие задания: /tasks');
+        const open = appButton('📱 Открыть задание', `/#/join/${inv}`) || { text: 'Открыть задание', url: `${config.publicUrl}/#/join/${inv}` };
+        return reply(chatId, `🎮 <b>${escapeHtml(c.title)}</b>
+${escapeHtml(c.description)}
+
+⏱ ~${c.est_minutes || 5} мин · 🪙 +${c.reward} AB Points`, {
+          reply_markup: { inline_keyboard: [[open], ...(user ? [[{ text: '▶ Пройти в чате', callback_data: `t:${c.id}` }]] : [])] },
+        });
+      }
       if (code) {
         const res = linkAccount(code, chatId, msg.from?.username);
         if (!res.ok) return reply(chatId, `⚠️ ${escapeHtml(res.reason)}`);

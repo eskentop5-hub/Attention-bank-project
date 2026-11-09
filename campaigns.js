@@ -6,6 +6,7 @@ import { config } from '../config.js';
 import { bad, forbidden, notFound, str, int, url, parseJson, HttpError } from '../util.js';
 import { CATEGORIES, QUESTION_TYPES, categoryLabel, isCategory, cleanInterests } from '../catalog.js';
 import { postTransaction } from './ledger.js';
+import { randomCode } from '../util.js';
 const escHtml = (v) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 import { notify } from './notifications.js';
 import { validateAnswers, scoreSubmission, userTrust, FLAG_INFO, AUTO_APPROVE_SCORE, AUTO_REJECT_SCORE } from './verification.js';
@@ -45,6 +46,12 @@ function cleanQuestions(raw) {
   });
 }
 
+// Детали продукта для проверки «проходил ли человек продукт»: до 15 слов, участнику не показываются
+function cleanKeywords(v) {
+  const list = (Array.isArray(v) ? v : String(v ?? '').split(/[,\n]/)).map((s) => String(s).trim().toLowerCase()).filter((s) => s.length >= 2 && s.length <= 30);
+  return [...new Set(list)].slice(0, 15);
+}
+
 export function createCampaign(company, body) {
   const title = str(body.title, { field: 'Название', min: 4, max: 120 });
   const description = str(body.description, { field: 'Описание', min: 20, max: 3000 });
@@ -69,6 +76,7 @@ export function createCampaign(company, body) {
       reward, fee, maxParticipants, minSeconds, body.autoApprove ? 1 : 0, body.requireTelegram ? 1 : 0, JSON.stringify(questions), budget
     );
     const id = Number(r.lastInsertRowid);
+    run('UPDATE campaigns SET keywords = ?, invite_code = ? WHERE id = ?', JSON.stringify(cleanKeywords(body.keywords)), randomCode(8), id);
     // Бюджет резервируется сразу. Если денег не хватает — postTransaction бросит ошибку и всё откатится.
     postTransaction({
       userId: company.id,
@@ -112,6 +120,7 @@ export function updateCampaign(company, id, body) {
     const autoApprove = body.autoApprove !== undefined ? (body.autoApprove ? 1 : 0) : c.auto_approve;
     const requireTelegram = body.requireTelegram !== undefined ? (body.requireTelegram ? 1 : 0) : c.require_telegram;
 
+    if (body.keywords !== undefined) run('UPDATE campaigns SET keywords = ? WHERE id = ?', JSON.stringify(cleanKeywords(body.keywords)), id);
     let questions = c.questions;
     if (body.questions !== undefined) {
       const answered = one('SELECT COUNT(*) AS n FROM assignments WHERE campaign_id = ? AND submitted_at IS NOT NULL', id).n;
@@ -181,6 +190,8 @@ export function campaignPublic(c, userId = null) {
     questions: parseJson(c.questions, []).map((q) => (userId != null && userId !== c.company_id ? (({ correct, ...rest }) => ({ ...rest, check: !!correct }))(q) : q)),
     createdAt: c.created_at,
     my: mine ? assignmentView(mine) : null,
+    // Только для компании-владельца: детали продукта и ссылка-приглашение
+    ...(userId == null ? { keywords: parseJson(c.keywords, []), inviteCode: c.invite_code || null } : {}),
   };
 }
 
@@ -240,7 +251,7 @@ export function startTask(user, id) {
   });
 }
 
-export function submitTask(user, id, rawAnswers) {
+export function submitTask(user, id, rawAnswers, meta = {}) {
   const result = tx(() => {
     const c = one('SELECT * FROM campaigns WHERE id = ?', id);
     if (!c || c.status !== 'active') throw bad('Задание сейчас недоступно');
@@ -259,7 +270,7 @@ export function submitTask(user, id, rawAnswers) {
 
     const questions = parseJson(c.questions, []);
     const answers = validateAnswers(questions, rawAnswers);
-    const { score, flags } = scoreSubmission({ campaign: c, questions, answers, startedAt: a.started_at, userId: user.id, assignmentId: a.id });
+    const { score, flags } = scoreSubmission({ campaign: c, questions, answers, startedAt: a.started_at, userId: user.id, assignmentId: a.id, meta });
 
     run(
       "UPDATE assignments SET status = 'submitted', submitted_at = ?, answers = ?, auto_score = ?, auto_flags = ? WHERE id = ?",
@@ -516,3 +527,84 @@ export function exportCsv(company, id) {
 }
 
 export const meta = () => ({ categories: CATEGORIES });
+
+// ---------- Ссылка-приглашение тестировщиков ----------
+export function inviteFor(company, id) {
+  const c = one('SELECT * FROM campaigns WHERE id = ?', id);
+  if (!c) throw notFound();
+  if (c.company_id !== company.id) throw forbidden();
+  if (!c.invite_code) run('UPDATE campaigns SET invite_code = ? WHERE id = ?', randomCode(8), id);
+  return one('SELECT invite_code FROM campaigns WHERE id = ?', id).invite_code;
+}
+/** Публичное описание кампании по коду приглашения (без вопросов и ответов) */
+export function joinInfo(code) {
+  const c = one('SELECT * FROM campaigns WHERE invite_code = ?', String(code || '').toUpperCase());
+  if (!c) throw notFound('Приглашение не найдено или устарело');
+  const company = one('SELECT company_name, is_demo FROM users WHERE id = ?', c.company_id);
+  return {
+    campaignId: c.id,
+    title: c.title,
+    description: c.description,
+    categoryLabel: categoryLabel(c.category),
+    reward: c.reward,
+    estMinutes: c.est_minutes,
+    company: company?.company_name,
+    companyDemo: !!company?.is_demo,
+    status: c.status,
+    slotsLeft: Math.max(0, c.max_participants - slotsTaken(c.id)),
+  };
+}
+
+// ---------- Отчёт для студии (печать / PDF) ----------
+const STOP = new Set('и в во не что он на я с со как а то все она так его но да ты к у же вы за бы по только ее мне было вот от меня еще нет о из ему теперь когда даже ну вдруг ли если уже или ни быть был него до вас нибудь опять уж вам ведь там потом себя ничего ей может они тут где есть надо ней для мы тебя их чем была сам чтоб без будто чего раз тоже себе под будет ж тогда кто этот того потому этого какой совсем ним здесь этом один почти мой тем чтобы нее сейчас были куда зачем всех никогда можно при наконец два об другой хоть после над больше тот через эти нас про всего них какая много разве три эту моя впрочем хорошо свою этой перед иногда лучше чуть том нельзя такой им более всегда конечно всю между это очень просто игра игре игры игру понял поняла нужно слишком было хотелось почему сразу пока потому'.split(' '));
+export function campaignReport(company, id) {
+  const c = one('SELECT * FROM campaigns WHERE id = ?', id);
+  if (!c) throw notFound();
+  if (c.company_id !== company.id) throw forbidden();
+  const questions = parseJson(c.questions, []);
+  const rows = all('SELECT * FROM assignments WHERE campaign_id = ? ORDER BY id', id);
+  const sub = rows.filter((r) => r.submitted_at);
+  const approved = rows.filter((r) => r.status === 'approved');
+  const rejected = rows.filter((r) => r.status === 'rejected');
+  const minutes = sub.map((r) => (Date.parse(r.submitted_at) - Date.parse(r.started_at)) / 60e3).filter((m) => m >= 0).sort((a, b) => a - b);
+  const median = minutes.length ? Math.round(minutes[Math.floor(minutes.length / 2)] * 10) / 10 : null;
+  const base = approved.length ? approved : sub; // если одобренных ещё нет — показываем отправленные
+  const answersOf = (r) => parseJson(r.answers, {});
+  const perQuestion = questions.map((q) => {
+    const vals = base.map((r) => answersOf(r)[q.id]).filter((v) => v !== undefined && v !== null && v !== '');
+    const out = { id: q.id, type: q.type, label: q.label, count: vals.length };
+    if (q.type === 'rating') {
+      out.avg = vals.length ? Math.round((vals.reduce((s, v) => s + Number(v), 0) / vals.length) * 10) / 10 : null;
+      out.dist = [1, 2, 3, 4, 5].map((n) => vals.filter((v) => Number(v) === n).length);
+    } else if (q.type === 'choice') {
+      out.options = q.options.map((o) => ({ option: o, count: vals.filter((v) => v === o).length, correct: q.correct ? o === q.correct : undefined }));
+      if (q.correct) out.correctRate = vals.length ? Math.round((vals.filter((v) => v === q.correct).length / vals.length) * 100) : null;
+    } else {
+      const freq = {};
+      for (const v of vals)
+        for (const w of String(v).toLowerCase().match(/[\p{L}]{4,}/gu) || []) if (!STOP.has(w)) freq[w] = (freq[w] || 0) + 1;
+      out.topWords = Object.entries(freq).sort((a, b) => b[1] - a[1]).slice(0, 10).map(([word, n]) => ({ word, n }));
+      out.quotes = vals.map(String).sort((a, b) => b.length - a.length).slice(0, 6);
+    }
+    return out;
+  });
+  const flagCount = {};
+  for (const r of sub) for (const f of parseJson(r.auto_flags, [])) flagCount[f] = (flagCount[f] || 0) + 1;
+  const costPer = c.reward + c.fee_per_result;
+  const comp = one('SELECT company_name, is_demo FROM users WHERE id = ?', c.company_id);
+  return {
+    campaign: { id: c.id, title: c.title, description: c.description, categoryLabel: categoryLabel(c.category), reward: c.reward, status: c.status, createdAt: c.created_at, company: comp.company_name, demo: !!comp.is_demo },
+    funnel: { started: rows.length, submitted: sub.length, approved: approved.length, rejected: rejected.length, pending: rows.filter((r) => r.status === 'submitted').length },
+    completionRate: rows.length ? Math.round((sub.length / rows.length) * 100) : null,
+    approvalRate: approved.length + rejected.length ? Math.round((approved.length / (approved.length + rejected.length)) * 100) : null,
+    avgScore: sub.length ? Math.round(sub.reduce((s, r) => s + (r.auto_score || 0), 0) / sub.length) : null,
+    medianMinutes: median,
+    spentAb: approved.length * costPer,
+    spentKzt: approved.length * costPer * config.economy.abToKzt,
+    costPerResultKzt: costPer * config.economy.abToKzt,
+    basis: approved.length ? 'approved' : 'submitted',
+    questions: perQuestion,
+    flags: Object.entries(flagCount).map(([id, n]) => ({ id, label: FLAG_INFO[id]?.label || id, n })).sort((a, b) => b.n - a.n),
+    generatedAt: new Date().toISOString(),
+  };
+}

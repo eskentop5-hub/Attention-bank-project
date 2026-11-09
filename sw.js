@@ -1,6 +1,6 @@
 // Service Worker: PWA-установка и офлайн-оболочка.
 // API никогда не кэшируется — баланс и задания всегда свежие с сервера.
-const CACHE = 'ab-shell-v8';
+const CACHE = 'ab-shell-v10';
 const SHELL = ['/', '/index.html', '/css/app.css', '/css/retro.css', '/js/app.js', '/js/ab3d.js', '/js/extras.js', '/icons/logo.svg', '/icons/icon-192.png', '/manifest.webmanifest', '/img/rewards/cat-game_access.svg'];
 
 self.addEventListener('install', (e) => {

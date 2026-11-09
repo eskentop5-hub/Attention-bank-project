@@ -369,7 +369,7 @@ export const MODELS = {
       const a = (i / 90) * Math.PI * 2;
       g.bevelBox(M.chain(M.rotZ(a), M.trans(0.625, 0, 0)), MAT.goldPale, 0.02, 0.018, 0.12, 0.004);
     }
-    for (let i = 0; i < 5; i++) g.star(M.chain(M.rotZ((i / 5) * Math.PI * 2 + Math.PI / 2), M.trans(0, 0.46, 0.07), M.scale(0.25)), MAT.red, { r: 0.3, inner: 0.13, h: 0.12 });
+    for (let i = 0; i < 5; i++) g.star(M.chain(M.rotZ((i / 5) * Math.PI * 2 + Math.PI / 2), M.trans(0, 0.46, 0.07), M.scale(0.25)), MAT.skyMetal, { r: 0.3, inner: 0.13, h: 0.12 });
     return { geo: g, size: 1.2 };
   },
   // Геймпад
@@ -434,7 +434,7 @@ export const MODELS = {
       g.lathe(M.chain(base, M.trans(0, 0.38, 0)), MAT.steel, [[0.03, 0], [0.018, 0.05], [0.012, 0.8], [0.006, 0.84]], 16);
       g.sphere(M.chain(base, M.trans(0, 0.4, 0)), MAT.gold, { r: 0.045, su: 16, sv: 10 });
     }
-    g.star(M.trans(0, 0.05, 0.415), MAT.red, { r: 0.12, inner: 0.05, h: 0.03 });
+    g.torus(M.trans(0, 0.05, 0.41), MAT.gold, { R: 0.08, r: 0.02, su: 40, sv: 10 });
     return { geo: g, size: 1.15 };
   },
   // Планета с кольцом: полосы атмосферы и наклонное кольцо
