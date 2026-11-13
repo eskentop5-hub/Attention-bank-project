@@ -9,7 +9,8 @@
 //  2. При обмене баллы не сгорают: продавец награды получает выручку, платформа — комиссию с продажи.
 //  3. Выводить AB в деньги могут только компании-продавцы (по договору), участники — нет: для них AB остаются баллами.
 //  4. Инвариант казны: Σ балансов всех счетов + Σ резервов кампаний = Σ пополнений − Σ выплат. Проверяется автоматически.
-import { one, all, run, tx, platformAccountId } from '../db.js';
+import { one, all, run, tx, platformAccountId, isDemo } from '../db.js';
+import { notifyAdmins } from './billing.js';
 import { config } from '../config.js';
 import { bad, int } from '../util.js';
 import { postTransaction } from './ledger.js';
@@ -51,15 +52,16 @@ export function requestPayout(company, body) {
     const r = run(
       'INSERT INTO payouts (company_id, amount, amount_kzt, status, note) VALUES (?, ?, ?, ?, ?)',
       company.id, amount, toKzt(amount), 'requested',
-      config.demoMode ? 'Демо-режим: заявка создана, деньги не переводятся' : 'Ожидает перевода по договору'
+      isDemo() ? 'Демо-режим: заявка создана, деньги не переводятся' : 'Ожидает перевода администратором по реквизитам из договора'
     );
     const id = Number(r.lastInsertRowid);
+    if (!isDemo()) notifyAdmins({ title: 'Заявка на вывод', body: `${company.company_name || company.name}: ${amount} AB → ${toKzt(amount).toLocaleString('ru-RU')} ₸`, link: '/#/admin/money' });
     const { balanceAfter } = postTransaction({ userId: company.id, amount: -amount, type: 'payout', title: `Вывод ${amount} AB → ${toKzt(amount).toLocaleString('ru-RU')} ₸`, refType: 'payout', refId: id });
     return { payout: payoutView(one('SELECT * FROM payouts WHERE id = ?', id)), balance: balanceAfter };
   });
 }
 
-const payoutView = (p) => ({ id: p.id, amount: p.amount, amountKzt: p.amount_kzt, status: p.status, note: p.note, createdAt: p.created_at });
+const payoutView = (p) => ({ id: p.id, amount: p.amount, amountKzt: p.amount_kzt, status: p.status, note: p.note, adminNote: p.admin_note || null, createdAt: p.created_at, decidedAt: p.decided_at || null });
 
 /** Кабинет продавца: выручка с наград, разбивка по наградам и дням, выплаты */
 export function sellerRevenue(companyId, days = 14) {
@@ -98,7 +100,7 @@ export function sellerRevenue(companyId, days = 14) {
     days: series,
     payouts: all('SELECT * FROM payouts WHERE company_id = ? ORDER BY id DESC LIMIT 20', companyId).map(payoutView),
     paidOut: one("SELECT COALESCE(SUM(amount), 0) AS v FROM payouts WHERE company_id = ? AND status != 'rejected'", companyId).v,
-    rules: { sellerFeePercent: config.economy.sellerFeePercent, abToKzt: config.economy.abToKzt, payoutMinAb: config.economy.payoutMinAb, demo: config.demoMode },
+    rules: { sellerFeePercent: config.economy.sellerFeePercent, abToKzt: config.economy.abToKzt, payoutMinAb: config.economy.payoutMinAb, demo: isDemo() },
   };
 }
 

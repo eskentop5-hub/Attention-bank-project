@@ -2,11 +2,16 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import { ROOT } from './config.js';
+import { ROOT, config } from './config.js';
 import { HttpError } from './util.js';
-import { one, run } from './db.js';
+import { one, run, withContext } from './db.js';
 import { match } from './routes.js';
-import { COOKIE, userFromToken } from './services/auth.js';
+import { COOKIE, DEMO_COOKIE, userFromToken } from './services/auth.js';
+import { demoContext } from './demo.js';
+import { logError } from './services/ops.js';
+
+// Cookie режима: 'demo' — запросы идут в демо-песочницу, иначе — в настоящую базу
+export const MODE_COOKIE = 'ab_mode';
 import ASSETS from './assets.js';
 
 const PUBLIC = path.join(ROOT, 'public');
@@ -79,7 +84,33 @@ function sendJson(res, status, data, headers = {}) {
   res.end(JSON.stringify(data));
 }
 
+// index.html: подставляем публичный адрес сайта (нужен для превью ссылок в Telegram/WhatsApp — og:image должен быть абсолютным)
+const withPublicUrl = (buf) => Buffer.from(buf.toString('utf8').replaceAll('%PUBLIC_URL%', config.publicUrl));
+
+// SEO: robots.txt и sitemap.xml с правильным адресом сайта
+function serveSeo(res, pathname) {
+  const u = config.publicUrl;
+  if (pathname === '/robots.txt') {
+    res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'public, max-age=3600' });
+    return res.end(`User-agent: *\nAllow: /\nDisallow: /api/\nSitemap: ${u}/sitemap.xml\n`), true;
+  }
+  if (pathname === '/sitemap.xml') {
+    const pages = ['/', '/play/steppe-runner/index.html', '/play/steppe-runner/store.html', '/play/qadam/index.html', '/play/inventory/index.html', '/play/video/index.html'];
+    const xml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${pages.map((p) => `  <url><loc>${u}${p}</loc></url>`).join('\n')}\n</urlset>\n`;
+    res.writeHead(200, { 'Content-Type': 'application/xml; charset=utf-8', 'Cache-Control': 'public, max-age=3600' });
+    return res.end(xml), true;
+  }
+  // Короткая реферальная ссылка: /r/КОД → регистрация с кодом друга
+  const ref = /^\/r\/([A-Za-z0-9]{4,16})\/?$/.exec(pathname);
+  if (ref) {
+    res.writeHead(302, { Location: `/?ref=${ref[1].toUpperCase()}#/register`, 'Cache-Control': 'no-store' });
+    return res.end(), true;
+  }
+  return false;
+}
+
 function serveStatic(req, res, pathname) {
+  if (serveSeo(res, pathname)) return;
   if (ASSETS) return serveEmbedded(req, res, pathname);
   let file = path.normalize(path.join(PUBLIC, decodeURIComponent(pathname)));
   if (!file.startsWith(PUBLIC)) return sendJson(res, 403, { error: 'Forbidden' });
@@ -95,6 +126,7 @@ function serveStatic(req, res, pathname) {
     ...SECURITY_HEADERS,
   };
   if (ext === '.mp4') return sendBuffer(req, res, fs.readFileSync(file), headers);
+  if (file.endsWith('index.html') && path.dirname(file) === PUBLIC) return sendBuffer(req, res, withPublicUrl(fs.readFileSync(file)), headers);
   res.writeHead(200, headers);
   if (req.method === 'HEAD') return res.end();
   fs.createReadStream(file).pipe(res);
@@ -108,7 +140,10 @@ function serveEmbedded(req, res, pathname) {
     key = 'public/index.html';
   }
   const ext = path.extname(key);
-  if (!embeddedCache.has(key)) embeddedCache.set(key, Buffer.from(ASSETS[key], 'base64'));
+  if (!embeddedCache.has(key)) {
+    const buf = Buffer.from(ASSETS[key], 'base64');
+    embeddedCache.set(key, key === 'public/index.html' ? withPublicUrl(buf) : buf);
+  }
   sendBuffer(req, res, embeddedCache.get(key), {
     'Content-Type': MIME[ext] || 'application/octet-stream',
     'Cache-Control': ['.html', '.js', '.css', '.webmanifest'].includes(ext) ? 'no-cache' : 'public, max-age=300',
@@ -129,7 +164,17 @@ async function handle(req, res) {
   if (!found) return sendJson(res, 404, { error: 'Метод API не найден' });
 
   const cookies = parseCookies(req.headers.cookie);
-  const token = cookies[COOKIE];
+  // Демо-песочница: отдельная база. Telegram, админка и переключатель режима всегда работают с настоящей.
+  const demo = config.demoSandbox && cookies[MODE_COOKIE] === 'demo' && !found.route.realOnly;
+  if (demo) {
+    const dctx = await demoContext();
+    return withContext(dctx, () => handleApi(req, res, pathname, url, found, cookies, true));
+  }
+  return handleApi(req, res, pathname, url, found, cookies, false);
+}
+
+async function handleApi(req, res, pathname, url, found, cookies, demo) {
+  const token = cookies[demo ? DEMO_COOKIE : COOKIE];
   const headers = {};
   const ctx = {
     req,
@@ -138,9 +183,11 @@ async function handle(req, res) {
     query: Object.fromEntries(url.searchParams),
     token,
     user: userFromToken(token),
-    ip: req.socket.remoteAddress,
+    ip: (config.trustProxy && String(req.headers['x-forwarded-for'] || '').split(',')[0].trim()) || req.socket.remoteAddress,
     body: {},
-    setCookie: (c) => (headers['Set-Cookie'] = c),
+    cookies,
+    demo,
+    setCookie: (c) => (headers['Set-Cookie'] = [...(headers['Set-Cookie'] || []), c]),
   };
 
   try {
@@ -182,6 +229,7 @@ async function handle(req, res) {
     if (err instanceof SyntaxError) return sendJson(res, 400, { error: 'Некорректный JSON' });
     if (err instanceof HttpError) return sendJson(res, err.status, { error: err.message, details: err.details }, headers);
     console.error('[api]', req.method, pathname, err);
+    logError({ source: 'server', message: err?.message || String(err), detail: err?.stack, path: `${req.method} ${pathname}${demo ? ' [демо]' : ''}`, userId: ctx.user?.id });
     sendJson(res, 500, { error: 'Внутренняя ошибка сервера' });
   }
 }

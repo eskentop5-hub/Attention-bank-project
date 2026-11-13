@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+export const VERSION = '13.0.0';
+
 // В собранной версии (attention-bank-v2.mjs) файл лежит в корне проекта, в исходниках — в server/
 export const BUNDLED = process.env.AB_BUNDLED === '1';
 export const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), BUNDLED ? '.' : '..');
@@ -29,17 +31,55 @@ const num = (k, d) => {
 export const config = {
   port: num('PORT', 3000),
   publicUrl: String(env('PUBLIC_URL', 'http://localhost:3000')).replace(/\/$/, ''),
-  dbPath: path.resolve(ROOT, env('DB_PATH', './data/attention-bank.db')),
-  // Демо-режим: демо-данные, пополнение бюджета без оплаты, пометки «демо» в интерфейсе.
-  // В продакшене поставьте DEMO_MODE=0 — пополнение без платёжного шлюза будет отключено.
-  demoMode: env('DEMO_MODE', '1') === '1',
-  seedDemo: env('SEED_DEMO', '1') === '1',
+  // Настоящая база. С v11 по умолчанию новый файл: старая база прошлых версий (с демо-данными) не трогается.
+  // На хостинге с постоянным диском укажите путь на этом диске, например DB_PATH=/var/data/app.db
+  dbPath: path.resolve(ROOT, env('DB_PATH', './data/app.db')),
+  // Старый режим «всё приложение — демо» (бесплатное пополнение бюджета в настоящей базе). Только для тестов и разработки.
+  demoMode: env('DEMO_MODE', '0') === '1',
+  // Залить демо-данные в НАСТОЯЩУЮ базу (старое поведение). По умолчанию выключено: демо живёт в песочнице.
+  seedDemo: env('SEED_DEMO', '0') === '1',
+  // Демо-песочница по кнопке «Демо»: отдельная база в памяти с демо-аккаунтами, сбрасывается сама
+  demoSandbox: env('DEMO_SANDBOX', '1') === '1',
+  demoResetHours: num('DEMO_RESET_HOURS', 6),
+  // Администратор платформы: создаётся/обновляется при запуске (пароль хранится только в виде хеша)
+  admin: {
+    email: String(env('ADMIN_EMAIL', '')).trim().toLowerCase(),
+    password: env('ADMIN_PASSWORD', ''),
+  },
+  // Пополнение бюджета студией по счёту: реквизиты, которые увидит студия (если пусто — команда пришлёт счёт сама)
+  billing: {
+    details: String(env('BILLING_DETAILS', '')).replace(/\\n/g, '\n'),
+    contact: env('BILLING_CONTACT', ''),
+    minAb: num('TOPUP_MIN_AB', 100),
+  },
+  // Письма (восстановление пароля, подтверждение email). Провайдер с HTTP API: resend | brevo
+  email: {
+    provider: env('EMAIL_PROVIDER', ''),
+    apiKey: env('EMAIL_API_KEY', ''),
+    from: env('EMAIL_FROM', ''),
+  },
+  // Резервные копии настоящей базы в S3-совместимое хранилище (Cloudflare R2, Backblaze B2, Yandex Object Storage…)
+  backup: {
+    endpoint: String(env('BACKUP_S3_ENDPOINT', '')).replace(/\/$/, ''),
+    bucket: env('BACKUP_S3_BUCKET', ''),
+    region: env('BACKUP_S3_REGION', 'auto'),
+    keyId: env('BACKUP_S3_KEY_ID', ''),
+    secret: env('BACKUP_S3_SECRET', ''),
+    prefix: String(env('BACKUP_PREFIX', 'attention-bank')).replace(/^\/|\/$/g, ''),
+    // Как часто проверять изменения и сохранять копию (минуты). Копия делается, только если база менялась.
+    intervalMin: num('BACKUP_INTERVAL_MIN', 1),
+    keep: num('BACKUP_KEEP', 48),
+  },
+  // Реферальная программа: бонус пригласившему за первое одобренное задание друга (платит платформа из своих комиссий)
+  referralBonus: num('REFERRAL_BONUS', 20),
   telegram: {
     token: env('TELEGRAM_BOT_TOKEN', ''),
     username: String(env('TELEGRAM_BOT_USERNAME', '')).replace(/^@/, ''),
     groupId: env('TELEGRAM_GROUP_ID', ''),
     mode: env('TELEGRAM_MODE', 'polling'),
     webhookSecret: env('TELEGRAM_WEBHOOK_SECRET', 'change-me'),
+    // Необязательно: чат для резервных копий базы. По умолчанию — Telegram администратора (ничего задавать не нужно)
+    backupChatId: env('TELEGRAM_BACKUP_CHAT_ID', ''),
     // Час ежедневного напоминания о серии (по часовому поясу TZ_OFFSET_MIN)
     reminderHour: num('REMINDER_HOUR', 19),
     verifyBonus: num('TELEGRAM_VERIFY_BONUS', 10),
@@ -65,5 +105,9 @@ export const config = {
   dailyChallenge: num('DAILY_CHALLENGE_TASKS', 3),
   // Не давать бесплатному Render засыпать (при засыпании стирается база). По умолчанию — для адресов *.onrender.com
   keepAwake: env('KEEP_AWAKE', '') === '1' || (env('KEEP_AWAKE', '') !== '0' && /onrender\.com/.test(env('PUBLIC_URL', ''))),
+  // За прокси (Render и т.п.) настоящий IP клиента — в X-Forwarded-For (нужно для лимитов попыток входа)
+  trustProxy: env('TRUST_PROXY', /onrender\.com/.test(env('PUBLIC_URL', '')) ? '1' : '0') === '1',
+  // Сколько регистраций в час с одного IP (класс или клуб за одним Wi-Fi — поэтому с запасом)
+  registerPerHour: num('REGISTER_PER_HOUR', 60),
   sessionDays: 30,
 };

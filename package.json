@@ -1,6 +1,6 @@
 {
   "name": "attention-bank",
-  "version": "1.0.0",
+  "version": "13.0.0",
   "description": "ATTENTION BANK — платформа добровольного измеримого взаимодействия: компании платят за подтверждённый результат, пользователи получают AB Points.",
   "type": "module",
   "private": true,
@@ -12,6 +12,6 @@
     "dev": "node --disable-warning=ExperimentalWarning --watch server/index.js",
     "build": "node scripts/build.mjs",
     "seed": "node --disable-warning=ExperimentalWarning server/seed-cli.js",
-    "test": "node --disable-warning=ExperimentalWarning --test test/flow.test.js test/seed.test.js"
+    "test": "node --disable-warning=ExperimentalWarning --test test/flow.test.js test/seed.test.js test/real.test.js test/tgbackup.test.js test/abi.test.js"
   }
 }

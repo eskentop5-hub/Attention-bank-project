@@ -1,6 +1,6 @@
 // REST API ATTENTION BANK
-import { config } from './config.js';
-import { one, all, run, tx, now } from './db.js';
+import { config, VERSION } from './config.js';
+import { one, all, run, tx, now, isDemo, modeName } from './db.js';
 import { bad, forbidden, HttpError, str, email as cleanEmail, int } from './util.js';
 import { CATEGORIES, INTERESTS, REWARD_CATEGORIES, QUESTION_TYPE_LABELS, cleanInterests } from './catalog.js';
 import { home, activity, exportUserData } from './services/home.js';
@@ -14,8 +14,17 @@ import { verifyInitData } from './telegram/features.js';
 import { telegramEnabled } from './telegram/api.js';
 import { recordVisit, streak, userStats, dailyChallenge } from './services/stats.js';
 import * as mascot from './services/mascot.js';
+import * as assistant from './services/assistant.js';
 import * as economy from './services/economy.js';
 import { AUTO_APPROVE_SCORE, AUTO_REJECT_SCORE, FLAG_INFO } from './services/verification.js';
+import * as billing from './services/billing.js';
+import * as admin from './services/admin.js';
+import * as recovery from './services/recovery.js';
+import * as growth from './services/growth.js';
+import { logError, rateLimit, adminLog } from './services/ops.js';
+import { backupNow, backupStatus, snapshotFile } from './services/backup.js';
+import { demoInfo, resetDemo, canManualReset } from './demo.js';
+import fs from 'node:fs';
 
 const routes = [];
 const add = (method, path, opts, handler) => {
@@ -43,11 +52,24 @@ const need = (ctx, role) => {
   return ctx.user;
 };
 const id = (v) => int(v, { field: 'id', min: 1 });
+const needAdmin = (ctx) => {
+  const u = need(ctx);
+  if (!u.is_admin) throw forbidden('Только для администратора платформы');
+  return u;
+};
+// Админка и Telegram всегда работают с настоящей базой, даже если включена демо-песочница
+const ADMIN = { realOnly: true };
 
 // ---------- Публичное ----------
 
 GET('/api/meta', () => ({
-  demoMode: config.demoMode,
+  mode: modeName(),
+  demoMode: isDemo(),
+  demo: demoInfo(),
+  recovery: recovery.recoveryChannels(),
+  referralBonus: config.referralBonus,
+  support: config.billing.contact || null,
+  levels: growth.LEVELS.map((l) => ({ level: l.level, name: l.name, approved: l.approved, avgScore: l.avgScore })),
   categories: CATEGORIES,
   rewardCategories: REWARD_CATEGORIES,
   questionTypes: QUESTION_TYPE_LABELS,
@@ -69,13 +91,60 @@ GET('/api/stats', () => {
     (SELECT COUNT(*) FROM assignments WHERE status = 'approved') AS verifiedResults,
     (SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE type = 'task_reward') AS paidOut`);
   // Правила экономики — для модели unit-экономики в презентации (считается из настроек, а не вписано руками)
-  return { ...s, economy: { abToKzt: config.economy.abToKzt, platformFeePercent: config.economy.platformFeePercent, sellerFeePercent: config.economy.sellerFeePercent } };
+  return { ...s, demo: isDemo(), economy: { abToKzt: config.economy.abToKzt, platformFeePercent: config.economy.platformFeePercent, sellerFeePercent: config.economy.sellerFeePercent } };
 });
 
 // Реальные награды каталога для главной страницы (без входа)
-GET('/api/public/rewards', () => ({ rewards: rewards.publicRewards(6), demoMode: config.demoMode }));
+GET('/api/public/rewards', () => ({ rewards: rewards.publicRewards(6), demoMode: isDemo() }));
 
-GET('/api/health', () => ({ ok: true, ledger: verifyAllLedgers().ok, telegram: telegramEnabled() }));
+GET('/api/health', { realOnly: true }, () => {
+  const b = backupStatus();
+  return {
+    ok: true,
+    version: VERSION,
+    ledger: verifyAllLedgers().ok,
+    telegram: telegramEnabled(),
+    admin: !admin.adminSetupProblem(),
+    backup: { enabled: b.enabled, provider: b.provider, lastOkAt: b.lastOkAt, restoredAt: b.restoredAt, failing: !!b.lastError },
+  };
+});
+
+// ---------- Режим: настоящее приложение или демо-песочница ----------
+
+POST('/api/mode', { realOnly: true }, (ctx) => {
+  const demo = ctx.body.mode === 'demo';
+  if (demo && !config.demoSandbox) throw forbidden('Демо-режим отключён на этом сервере');
+  const secure = config.publicUrl.startsWith('https://') ? 'SameSite=None; Secure; Partitioned' : 'SameSite=Lax';
+  ctx.setCookie(demo ? `ab_mode=demo; Path=/; HttpOnly; ${secure}; Max-Age=${7 * 86400}` : `ab_mode=; Path=/; HttpOnly; ${secure}; Max-Age=0`);
+  return { mode: demo ? 'demo' : 'real' };
+});
+
+// В песочнице: войти демо-участником или демо-студией одной кнопкой
+POST('/api/demo/login', (ctx) => {
+  if (modeName() !== 'demo') throw forbidden('Только в демо-режиме');
+  const email = ctx.body.as === 'company' ? 'studio@attention.bank' : 'demo@attention.bank';
+  const user = one('SELECT * FROM users WHERE email = ?', email);
+  if (!user) throw bad('Демо ещё готовится, обновите страницу');
+  const s = auth.createSession(user.id);
+  ctx.setCookie(auth.sessionCookie(s.token, s.expires));
+  return { user: auth.publicUser(user) };
+});
+
+POST('/api/demo/reset', async (ctx) => {
+  if (modeName() !== 'demo') throw forbidden('Только в демо-режиме');
+  if (!canManualReset()) throw new HttpError(429, 'Демо уже обновлялось недавно. Попробуйте через несколько минут.');
+  await resetDemo();
+  ctx.setCookie(auth.sessionCookie(null));
+  return { ok: true, demo: demoInfo() };
+});
+
+// Ошибки из браузера → журнал ошибок администратора
+POST('/api/client-error', { public: true, realOnly: true }, (ctx) => {
+  rateLimit(`clienterr|${ctx.ip}`, 20, 10 * 60e3);
+  const b = ctx.body || {};
+  logError({ source: 'client', message: String(b.message || 'Ошибка в браузере'), detail: String(b.stack || '').slice(0, 3000), path: String(b.page || '').slice(0, 200), userId: ctx.user?.id });
+  return { ok: true };
+});
 
 // ---------- Аутентификация ----------
 
@@ -92,9 +161,15 @@ POST('/api/auth/register', (ctx) => {
   if (!b.consent) throw bad('Нужно согласие на обработку данных');
   if (role === 'user' && !b.ageConfirmed) throw bad('Платформа доступна с 16 лет. Подтвердите возраст.');
   if (one('SELECT id FROM users WHERE email = ?', email)) throw bad('Аккаунт с таким email уже есть');
+  // Адрес администратора из настроек сервера зарезервирован: его аккаунт создаёт только сервер
+  if (config.admin.email && email === config.admin.email) throw bad('Этот email зарезервирован. Укажите другой адрес.');
+  rateLimit(`register|${ctx.ip}`, config.registerPerHour, 60 * 60e3, 'Слишком много регистраций с одного адреса. Попробуйте позже.');
+  // Откуда пришёл человек: реферальная ссылка друга, приглашение студии или метка рекламы (utm_source)
+  const referrer = role === 'user' ? growth.findReferrer(b.ref) : null;
+  const source = growth.cleanSource(b.source) || (referrer ? 'referral' : b.invite ? 'studio_invite' : null);
   const r = run(
-    'INSERT INTO users (email, password_hash, name, role, company_name, consent_at) VALUES (?, ?, ?, ?, ?, ?)',
-    email, auth.hashPassword(password), name, role, companyName, new Date().toISOString()
+    'INSERT INTO users (email, password_hash, name, role, company_name, consent_at, referred_by, signup_source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+    email, auth.hashPassword(password), name, role, companyName, new Date().toISOString(), referrer?.id ?? null, source
   );
   const user = one('SELECT * FROM users WHERE id = ?', Number(r.lastInsertRowid));
   const s = auth.createSession(user.id);
@@ -107,8 +182,12 @@ POST('/api/auth/login', (ctx) => {
   const key = `${ctx.ip}|${email}`;
   auth.checkLoginRate(key);
   const user = one('SELECT * FROM users WHERE email = ?', email);
+  // Владелец вводит адрес администратора, а аккаунт не создан из-за настроек сервера — говорим, что исправить
+  if (!user && modeName() === 'real' && config.admin.email && email === config.admin.email && admin.adminSetupProblem())
+    throw bad(`Администратор ещё не создан: ${admin.adminSetupProblem()}. Исправьте переменную в настройках Render — сервер перезапустится сам.`);
   if (!user || user.role === 'system' || !auth.verifyPassword(String(ctx.body.password || ''), user.password_hash))
     throw bad('Неверный email или пароль');
+  if (user.blocked_at) throw forbidden('Аккаунт заблокирован администратором. Напишите в поддержку.');
   auth.resetLoginRate(key);
   const s = auth.createSession(user.id);
   ctx.setCookie(auth.sessionCookie(s.token, s.expires));
@@ -157,6 +236,22 @@ POST('/api/me/delete', (ctx) => {
   return { ok: true };
 });
 
+// ---------- Восстановление пароля и подтверждение email ----------
+POST('/api/auth/forgot', async (ctx) => recovery.requestReset({ email: ctx.body.email, ip: ctx.ip }));
+GET('/api/auth/reset/:token', (ctx) => recovery.checkResetToken(ctx.params.token));
+POST('/api/auth/reset', (ctx) => {
+  const key = `reset|${ctx.ip}`;
+  auth.checkLoginRate(key);
+  const r = recovery.resetPassword({ token: ctx.body.token, password: ctx.body.password, confirm: ctx.body.confirm });
+  auth.resetLoginRate(key);
+  const user = one('SELECT * FROM users WHERE email = ?', r.email);
+  const s = auth.createSession(user.id);
+  ctx.setCookie(auth.sessionCookie(s.token, s.expires));
+  return { ok: true, user: auth.publicUser(user) };
+});
+POST('/api/me/verify-email', async (ctx) => recovery.requestEmailVerify(need(ctx), ctx.ip));
+POST('/api/auth/verify-email', (ctx) => recovery.confirmEmail(ctx.body.token));
+
 POST('/api/auth/logout', (ctx) => {
   auth.destroySession(ctx.token);
   ctx.setCookie(auth.sessionCookie(null));
@@ -172,9 +267,15 @@ GET('/api/me', (ctx) => {
 
 // Личная статистика: заработок по дням, вчера/позавчера, лучший день, одобрение, AB за час внимания
 GET('/api/me/stats', (ctx) => userStats(need(ctx).id, 14));
+// Уровень тестировщика и реферальная программа
+GET('/api/me/level', (ctx) => growth.testerLevel(need(ctx, 'user').id));
+GET('/api/me/referrals', (ctx) => growth.referralStats(need(ctx, 'user').id));
 
 // Маскот «Аби»: ИИ (если задан ANTHROPIC_API_KEY) или встроенная база знаний. Доступен и гостям.
 POST('/api/mascot/ask', async (ctx) => mascot.ask({ question: ctx.body.question, page: ctx.body.page, user: ctx.user, ip: ctx.ip }));
+// v13: Аби-ассистент выполняет команды (инструменты приложения) и, если подключён ИИ, ищет в интернете
+GET('/api/abi', (ctx) => assistant.assistantInfo(ctx.user));
+POST('/api/abi', async (ctx) => assistant.assist({ message: ctx.body.message, history: ctx.body.history, page: ctx.body.page, user: ctx.user, ip: ctx.ip }));
 
 // Обновление профиля. Баланс, роль, Telegram — НЕ меняются отсюда, даже если клиент их пришлёт.
 PUT('/api/me', (ctx) => {
@@ -277,10 +378,13 @@ POST('/api/notifications/read', (ctx) => {
 
 // ---------- Telegram ----------
 
-POST('/api/telegram/link-code', (ctx) => createLinkCode(need(ctx).id));
+POST('/api/telegram/link-code', (ctx) => {
+  if (modeName() === 'demo') throw bad('В демо-режиме Telegram не привязывается. Выйдите из демо.');
+  return createLinkCode(need(ctx).id);
+});
 
 // Mini App: вход по подписанным данным Telegram. Подпись проверяется токеном бота — подделать нельзя.
-POST('/api/telegram/webapp-login', (ctx) => {
+POST('/api/telegram/webapp-login', { realOnly: true }, (ctx) => {
   const tg = verifyInitData(ctx.body.initData);
   if (!tg) throw forbidden('Данные Telegram не прошли проверку подписи');
   const user = one("SELECT * FROM users WHERE telegram_chat_id = ? AND role != 'system'", String(tg.id));
@@ -290,7 +394,7 @@ POST('/api/telegram/webapp-login', (ctx) => {
   return { linked: true, user: auth.publicUser(user) };
 });
 // Mini App: привязать Telegram к аккаунту, в который только что вошли (без кода — по подписи Telegram)
-POST('/api/telegram/webapp-link', (ctx) => {
+POST('/api/telegram/webapp-link', { realOnly: true }, (ctx) => {
   const u = need(ctx);
   const tg = verifyInitData(ctx.body.initData);
   if (!tg) throw forbidden('Данные Telegram не прошли проверку подписи');
@@ -303,7 +407,7 @@ POST('/api/telegram/unlink', (ctx) => {
   unlinkTelegram(need(ctx).id);
   return { ok: true };
 });
-POST('/api/telegram/webhook', { public: true }, async (ctx) => {
+POST('/api/telegram/webhook', { public: true, realOnly: true }, async (ctx) => {
   if (ctx.req.headers['x-telegram-bot-api-secret-token'] !== webhookSecretToken()) throw forbidden();
   await handleUpdate(ctx.body);
   return { ok: true };
@@ -343,7 +447,7 @@ POST('/api/company/submissions/:id/review', { idempotent: true }, (ctx) => campa
 // Пополнение бюджета компании. Только в демо-режиме: в продакшене здесь будет платёжный шлюз.
 POST('/api/company/deposit', { idempotent: true }, (ctx) => {
   const c = need(ctx, 'company');
-  if (!config.demoMode) throw forbidden('Пополнение без оплаты доступно только в демо-режиме. Подключите платёжный шлюз.');
+  if (!isDemo()) throw forbidden('Пополнение без оплаты есть только в демо. В настоящем режиме создайте счёт: «Бюджет» → «Пополнить по счёту».');
   const amount = int(ctx.body.amount, { field: 'Сумма', min: 100, max: 1_000_000 });
   const { balanceAfter } = postTransaction({ userId: c.id, amount, type: 'deposit', title: 'Пополнение бюджета (демо)' });
   return { balance: balanceAfter };
@@ -358,3 +462,55 @@ GET('/api/economy', () => economy.treasury());
 GET('/api/company/rewards', (ctx) => ({ rewards: rewards.companyRewards(need(ctx, 'company').id) }));
 POST('/api/company/rewards', { idempotent: true }, (ctx) => ({ reward: rewards.createReward(need(ctx, 'company'), ctx.body) }));
 PUT('/api/company/rewards/:id', (ctx) => ({ reward: rewards.updateReward(need(ctx, 'company'), id(ctx.params.id), ctx.body) }));
+
+// ---------- Пополнение бюджета по счёту (студия) ----------
+GET('/api/company/topups', (ctx) => ({ topups: billing.companyTopups(need(ctx, 'company').id), billing: billing.billingInfo() }));
+POST('/api/company/topups', { idempotent: true }, (ctx) => {
+  const c = need(ctx, 'company');
+  const topup = billing.createTopup(c, ctx.body);
+  return { topup, billing: billing.billingInfo(), balance: one('SELECT balance FROM users WHERE id = ?', c.id).balance };
+});
+POST('/api/company/pilot-request', { idempotent: true }, (ctx) => ({ topup: billing.createTopup(need(ctx, 'company'), ctx.body, { pilot: true }) }));
+POST('/api/admin/users/:id/grant', ADMIN, (ctx) => ({ topup: billing.grantPilot(needAdmin(ctx), id(ctx.params.id), ctx.body) }));
+POST('/api/company/topups/:id/cancel', (ctx) => ({ topup: billing.cancelTopup(need(ctx, 'company'), id(ctx.params.id)) }));
+
+// ---------- Администратор платформы ----------
+GET('/api/admin/overview', ADMIN, (ctx) => (needAdmin(ctx), admin.overview()));
+GET('/api/admin/money', ADMIN, (ctx) => (needAdmin(ctx), { topups: billing.listTopups(), payouts: billing.listPayouts() }));
+POST('/api/admin/topups/:id/approve', ADMIN, (ctx) => ({ topup: billing.approveTopup(needAdmin(ctx), id(ctx.params.id), ctx.body.note ? String(ctx.body.note).slice(0, 300) : null) }));
+POST('/api/admin/topups/:id/reject', ADMIN, (ctx) => ({ topup: billing.rejectTopup(needAdmin(ctx), id(ctx.params.id), ctx.body.note) }));
+POST('/api/admin/payouts/:id/paid', ADMIN, (ctx) => ({ payout: billing.markPayoutPaid(needAdmin(ctx), id(ctx.params.id), ctx.body.note ? String(ctx.body.note).slice(0, 300) : null) }));
+POST('/api/admin/payouts/:id/reject', ADMIN, (ctx) => ({ payout: billing.rejectPayout(needAdmin(ctx), id(ctx.params.id), ctx.body.note) }));
+GET('/api/admin/users', ADMIN, (ctx) => (needAdmin(ctx), { users: admin.listUsers({ q: ctx.query.q || '', role: ['user', 'company'].includes(ctx.query.role) ? ctx.query.role : '' }) }));
+POST('/api/admin/users/:id/block', ADMIN, (ctx) => admin.setBlocked(needAdmin(ctx), id(ctx.params.id), !!ctx.body.blocked, ctx.body.reason));
+POST('/api/admin/users/:id/reset-link', ADMIN, (ctx) => recovery.adminResetLink(needAdmin(ctx), id(ctx.params.id)));
+GET('/api/admin/campaigns', ADMIN, (ctx) => (needAdmin(ctx), { campaigns: admin.listCampaigns() }));
+POST('/api/admin/campaigns/:id/status', ADMIN, (ctx) => admin.moderateCampaign(needAdmin(ctx), id(ctx.params.id), ctx.body.status, ctx.body.reason));
+GET('/api/admin/errors', ADMIN, (ctx) => (needAdmin(ctx), { errors: admin.errors() }));
+GET('/api/admin/actions', ADMIN, (ctx) => (needAdmin(ctx), { actions: admin.actions() }));
+GET('/api/admin/marketing', ADMIN, (ctx) => (needAdmin(ctx), growth.acquisition()));
+POST('/api/admin/backup', ADMIN, async (ctx) => {
+  const a = needAdmin(ctx);
+  const r = await backupNow({ force: true });
+  adminLog(a.id, 'backup', r.key || null, r.ok ? `${r.size || 0} байт` : r.reason || 'ошибка');
+  return r;
+});
+GET('/api/admin/backup/download', { ...ADMIN, raw: true }, async (ctx) => {
+  const a = needAdmin(ctx);
+  const file = await snapshotFile();
+  adminLog(a.id, 'db_download', null, ctx.ip);
+  const buf = fs.readFileSync(file);
+  fs.rmSync(file, { force: true });
+  ctx.res.writeHead(200, {
+    'Content-Type': 'application/octet-stream',
+    'Content-Disposition': `attachment; filename="attention-bank-${new Date().toISOString().slice(0, 10)}.db"`,
+    'Cache-Control': 'no-store',
+  });
+  ctx.res.end(buf);
+});
+POST('/api/admin/demo/reset', ADMIN, async (ctx) => {
+  const a = needAdmin(ctx);
+  await resetDemo();
+  adminLog(a.id, 'demo_reset');
+  return { ok: true, demo: demoInfo() };
+});

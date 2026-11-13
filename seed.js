@@ -17,6 +17,8 @@ export async function seedDemo({ log = console.log } = {}) {
     'inventory-prototype': `${config.publicUrl}/play/inventory/index.html`,
     'video-steppe': `${config.publicUrl}/play/video/index.html?v=steppe`,
     'video-qadam': `${config.publicUrl}/play/video/index.html?v=qadam`,
+    'sputnik-beta': `${config.publicUrl}/play/sputnik/index.html`,
+    'tamga-beta': `${config.publicUrl}/play/tamga/index.html`,
   };
   // Базы, созданные прошлыми версиями: заменить заглушки example.com на встроенные продукты
   for (const [slug, link] of Object.entries(PLAY)) {
@@ -109,7 +111,7 @@ export async function seedDemo({ log = console.log } = {}) {
   C.createCampaign(studio, {
     title: 'UX-исследование: новое меню инвентаря',
     description:
-      'Сравните два варианта меню инвентаря (A и B) на интерактивном прототипе и выберите удобный. Задание только для участников с подтверждённым через Telegram аккаунтом.',
+      'Сравните два варианта меню инвентаря (A и B) на интерактивном прототипе и выберите удобный. Задание для опытных тестировщиков (с уровня «Опытный») с подтверждённым через Telegram аккаунтом.',
     category: 'ux_research',
     productUrl: PLAY['inventory-prototype'],
     keywords: ['зелье', 'зелья', 'вариант', 'сетк', 'иконк', 'категор', 'поиск', 'подпис'],
@@ -120,10 +122,53 @@ export async function seedDemo({ log = console.log } = {}) {
     maxParticipants: 30,
     minSeconds: 90,
     requireTelegram: true,
+    minLevel: 2,
     questions: [
       { type: 'choice', label: 'Какой вариант удобнее?', options: ['Вариант A', 'Вариант B', 'Одинаково'] },
       { type: 'text', label: 'Почему? Что именно помогло или мешало найти нужный предмет?', minLength: 30 },
       { type: 'rating', label: 'Оцените выбранный вариант' },
+    ],
+  });
+
+  // v13: ещё две настоящие игры прямо в браузере
+  C.createCampaign(studio, {
+    title: 'Плейтест «Спутник: стыковка»',
+    description:
+      'Аркада в стиле советского космического плаката: подведите корабль к станции и состыкуйтесь — медленно и носом вперёд. Три уровня: учебная орбита, дрейф станции и поле обломков. Нам важно, понятно ли управление и честны ли аварии.',
+    category: 'game_testing',
+    productUrl: PLAY['sputnik-beta'],
+    keywords: ['стыков', 'топлив', 'станци', 'обломк', 'двигател', 'скорост', 'дрейф', 'панел', 'узел', 'орбит'],
+    estMinutes: 10,
+    instructions: 'Откройте игру — она запустится в браузере.\nПопробуйте пройти три уровня (на телефоне — кнопками на экране).\nОбратите внимание, где было сложно или нечестно.\nПо желанию скопируйте итоги теста и приложите к ответу.',
+    audience: ['indie_games', 'pc_games', 'mobile_games'],
+    reward: 30,
+    maxParticipants: 30,
+    minSeconds: 90,
+    autoApprove: true,
+    questions: [
+      { type: 'rating', label: 'Насколько понятным было управление?' },
+      { type: 'text', label: 'Какой уровень показался самым сложным и почему? Что мешало состыковаться?', minLength: 40 },
+      { type: 'choice', label: 'Купили бы полную версию за 990 ₸?', options: ['Да', 'Возможно', 'Нет'] },
+    ],
+  });
+  C.createCampaign(qadam, {
+    title: 'Тамга: мемори с казахским орнаментом',
+    description:
+      'Казуальная игра на память: найдите пары орнаментов по мотивам казахских узоров — «қошқар мүйіз», солнце, тумар, волны. Три уровня от 8 до 12 пар. Проверяем, различимы ли рисунки и приятна ли сложность.',
+    category: 'game_testing',
+    productUrl: PLAY['tamga-beta'],
+    keywords: ['орнамент', 'пар', 'карточ', 'рога', 'тумар', 'солнц', 'волн', 'уров', 'ошиб', 'путал'],
+    estMinutes: 7,
+    instructions: 'Откройте игру и пройдите хотя бы два уровня.\nЗапомните, какие орнаменты вы путали.\nОтветьте на вопросы — итоги под игрой можно скопировать.',
+    audience: ['mobile_games', 'indie_games'],
+    reward: 25,
+    maxParticipants: 30,
+    minSeconds: 60,
+    autoApprove: true,
+    questions: [
+      { type: 'rating', label: 'Насколько красивыми получились орнаменты?' },
+      { type: 'text', label: 'Какие пары орнаментов вы путали? Что бы изменили в рисунках?', minLength: 30 },
+      { type: 'choice', label: 'Сложность третьего уровня', options: ['Легко', 'В самый раз', 'Слишком сложно'] },
     ],
   });
 

@@ -2,15 +2,17 @@
 // • /start <код> — привязка и верификация аккаунта (1 Telegram = 1 аккаунт)
 // • /balance, /history, /tasks, /unlink, /help
 // • Уведомления об одобрении заданий приходят автоматически (services/notifications.js)
-import crypto from 'node:crypto';
 import { config } from '../config.js';
-import { one, all, run, tx, now } from '../db.js';
-import { call, sendMessage, escapeHtml, linkButton, telegramEnabled } from './api.js';
+import { one, all, run, tx, now, onCommit, isDemo } from '../db.js';
+import { call, sendMessage, escapeHtml, linkButton, telegramEnabled, webhookSecretToken, webhookUrl } from './api.js';
+import { backupNow, webhookBackupChat, rememberWebhookChat } from '../services/backup.js';
 import { platformBonus } from '../services/economy.js';
+import { maybeReferralBonus } from '../services/growth.js';
 import { notify } from '../services/notifications.js';
 import { randomCode } from '../util.js';
 import { categoryLabel } from '../catalog.js';
 import { appButton, listTasks, flowText, cancelFlow, handleCallback, statsText, setRemind, remindOn, startReminders, setupMenuButton } from './features.js';
+import { abiReply, topText, rewardsMsg, goalMsg, levelText, refMsg, adminText, HELP, COMMANDS } from './more.js';
 
 // ---------- Коды привязки ----------
 
@@ -58,6 +60,16 @@ export function linkAccount(code, chatId, username) {
       body: bonus ? `Аккаунт подтверждён. Бонус +${bonus} AB` : 'Уведомления будут приходить в Telegram',
       telegram: false,
     });
+    // Реферальная программа: бонус пригласившему, если друг уже выполнил задание
+    if (user.role === 'user') maybeReferralBonus(user.id);
+    // Администратор привязал Telegram — сразу сохраняем первую копию базы в его чат с ботом
+    if (user.is_admin && !isDemo())
+      onCommit(() =>
+        backupNow({ force: true }).then((r) => {
+          if (r.ok && r.provider === 'telegram')
+            sendMessage(chatId, '🗄 Резервные копии базы включены. Копия лежит в закреплённом сообщении и обновляется сама. Не удаляйте его: после перезапуска сервер восстановит базу из него.', { disable_notification: true });
+        })
+      );
     return { ok: true, user: one('SELECT * FROM users WHERE id = ?', user.id), bonus };
   });
 }
@@ -84,6 +96,12 @@ export async function handleUpdate(update) {
   const cmd = rawCmd.split('@')[0].toLowerCase();
   const user = one('SELECT * FROM users WHERE telegram_chat_id = ?', String(chatId));
 
+  if (cmd === '/backup' && isPrivate && user?.is_admin) {
+    // Только администратор: сохранить копию базы прямо сейчас
+    const r = await backupNow({ force: true });
+    return reply(chatId, r.ok ? '🗄 Копия базы обновлена — она в закреплённом сообщении этого чата.' : `⚠️ Копия не сохранена: ${escapeHtml(r.reason || 'ошибка')}`);
+  }
+
   if (cmd === '/chatid') {
     // Помогает узнать ID группы для TELEGRAM_GROUP_ID
     return reply(chatId, `ID этого чата: <code>${chatId}</code>\nВставьте его в TELEGRAM_GROUP_ID.`);
@@ -97,10 +115,34 @@ export async function handleUpdate(update) {
 
   // Ответ на вопрос задания, которое проходят прямо в чате
   if (!cmd.startsWith('/') && user && (await flowText(chatId, msg.text))) return;
+  // v13: обычный текст (не команда и не ответ на задание) — это просьба к Аби
+  if (!cmd.startsWith('/')) return abiReply(chatId, user, msg.text.slice(0, 800));
+  const needAcc = () => reply(chatId, 'Аккаунт не подключён. Отправьте /start, чтобы узнать как.');
   const app = appButton();
   const appKb = app ? { reply_markup: { inline_keyboard: [[app]] } } : {};
 
   switch (cmd) {
+    case '/abi':
+    case '/ai':
+      if (!args.length) return reply(chatId, '✦ Я Аби. Напишите просьбу обычным текстом, например: «найди задания до 10 минут», «на что мне хватит баллов?», «поставь цель Steam-ключ».');
+      return abiReply(chatId, user, args.join(' ').slice(0, 800));
+    case '/top':
+      return reply(chatId, topText(user), appKb);
+    case '/rewards':
+      if (!user || user.role !== 'user') return user ? reply(chatId, 'Награды — для участников. Кабинет студии: /app') : needAcc();
+      return reply(chatId, ...rewardsMsg(user));
+    case '/goal':
+      if (!user || user.role !== 'user') return needAcc();
+      return reply(chatId, ...goalMsg(user));
+    case '/level':
+      if (!user || user.role !== 'user') return needAcc();
+      return reply(chatId, levelText(user), appKb);
+    case '/ref':
+      if (!user || user.role !== 'user') return needAcc();
+      return reply(chatId, ...refMsg(user));
+    case '/admin':
+      if (!user?.is_admin) return reply(chatId, 'Команда только для администратора.');
+      return reply(chatId, adminText());
     case '/app':
       return reply(chatId, app ? 'Откройте ATTENTION BANK прямо в Telegram:' : `Сайт: ${config.publicUrl}`, appKb);
     case '/stats':
@@ -167,11 +209,7 @@ ${escapeHtml(c.description)}
       unlinkTelegram(user.id);
       return reply(chatId, 'Telegram отключён от аккаунта. Уведомления больше не придут.');
     default:
-      return reply(
-        chatId,
-        '<b>Команды</b>\n/app — открыть приложение в Telegram\n/tasks — задания (проходить прямо в чате)\n/stats — статистика и серия 🔥\n/balance — баланс\n/history — последние транзакции\n/remind — напоминание о серии\n/cancel — прервать задание\n/unlink — отключить Telegram',
-        appKb
-      );
+      return reply(chatId, HELP + (user?.is_admin ? '\n\n🛠 /admin — сводка · /backup — копия базы' : ''), appKb);
   }
 }
 
@@ -197,16 +235,7 @@ export async function startBot() {
     if (!config.telegram.username) config.telegram.username = me.username;
     console.log(`[telegram] бот @${me.username} запущен (${config.telegram.mode})`);
     await call('setMyCommands', {
-      commands: [
-        { command: 'app', description: 'Открыть приложение' },
-        { command: 'tasks', description: 'Задания прямо в чате' },
-        { command: 'stats', description: 'Статистика и серия' },
-        { command: 'balance', description: 'Баланс AB Points' },
-        { command: 'history', description: 'Последние транзакции' },
-        { command: 'remind', description: 'Напоминание о серии' },
-        { command: 'unlink', description: 'Отключить Telegram' },
-        { command: 'help', description: 'Помощь' },
-      ],
+      commands: COMMANDS,
     });
   } catch (e) {
     console.error('[telegram] не удалось подключиться:', e.message);
@@ -216,11 +245,13 @@ export async function startBot() {
   startReminders();
 
   if (config.telegram.mode === 'webhook') {
-    const url = `${config.publicUrl}/api/telegram/webhook`;
-    await call('setWebhook', { url, secret_token: webhookSecretToken(), allowed_updates: ['message', 'callback_query'] }).catch((e) =>
-      console.error('[telegram] setWebhook:', e.message)
-    );
-    console.log('[telegram] webhook:', url);
+    // В адрес webhook вписываем чат с резервными копиями — так база найдётся после перезапуска (см. services/tgbackup.js)
+    const bk = config.telegram.backupChatId ? null : webhookBackupChat();
+    const url = webhookUrl(bk);
+    await call('setWebhook', { url, secret_token: webhookSecretToken(), allowed_updates: ['message', 'callback_query'] })
+      .then(() => rememberWebhookChat(bk))
+      .catch((e) => console.error('[telegram] setWebhook:', e.message));
+    console.log('[telegram] webhook:', url.replace(/\?.*$/, ''), bk ? '(резервные копии: чат администратора)' : '');
     return;
   }
 
@@ -247,5 +278,4 @@ export const stopBot = () => {
   running = false;
 };
 
-// Telegram присылает этот токен в заголовке X-Telegram-Bot-Api-Secret-Token
-export const webhookSecretToken = () => crypto.createHash('sha256').update(config.telegram.webhookSecret).digest('hex');
+export { webhookSecretToken };

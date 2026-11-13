@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { one, run, now } from '../db.js';
+import { one, run, now, modeName } from '../db.js';
 import { config } from '../config.js';
 import { HttpError, sha256 } from '../util.js';
 
@@ -19,6 +19,9 @@ export function verifyPassword(password, stored) {
 }
 
 export const COOKIE = 'ab_session';
+// У демо-песочницы своя cookie сессии: переключение «Демо ⇄ настоящее» не разлогинивает
+export const DEMO_COOKIE = 'ab_session_demo';
+export const sessionCookieName = () => (modeName() === 'demo' ? DEMO_COOKIE : COOKIE);
 
 export function createSession(userId) {
   const token = crypto.randomBytes(32).toString('base64url');
@@ -35,7 +38,7 @@ export function userFromToken(token) {
   if (!token) return null;
   const row = one(
     `SELECT u.* FROM sessions s JOIN users u ON u.id = s.user_id
-     WHERE s.id = ? AND s.expires_at > ?`,
+     WHERE s.id = ? AND s.expires_at > ? AND u.blocked_at IS NULL AND u.deleted_at IS NULL`,
     sha256(token),
     now()
   );
@@ -46,8 +49,9 @@ export function sessionCookie(token, expires) {
   // По HTTPS cookie работает и внутри Telegram Web (сайт открыт во фрейме web.telegram.org).
   // Защита от CSRF при этом остаётся: сервер принимает только JSON и проверяет Origin.
   const attrs = config.publicUrl.startsWith('https://') ? 'SameSite=None; Secure; Partitioned' : 'SameSite=Lax';
-  if (!token) return `${COOKIE}=; Path=/; HttpOnly; ${attrs}; Max-Age=0`;
-  return `${COOKIE}=${token}; Path=/; HttpOnly; ${attrs}; Expires=${new Date(expires).toUTCString()}`;
+  const name = sessionCookieName();
+  if (!token) return `${name}=; Path=/; HttpOnly; ${attrs}; Max-Age=0`;
+  return `${name}=${token}; Path=/; HttpOnly; ${attrs}; Expires=${new Date(expires).toUTCString()}`;
 }
 
 // Простая защита от перебора паролей
@@ -75,6 +79,9 @@ export function publicUser(u) {
     goalRewardId: u.goal_reward_id ?? null,
     notifyTelegram: !!u.notify_telegram,
     isDemo: !!u.is_demo,
+    isAdmin: !!u.is_admin,
+    refCode: u.role === 'user' ? u.ref_code || null : null,
+    emailVerified: !!u.email_verified_at,
     avatar: u.avatar || null,
     consentAt: u.consent_at,
     telegram: u.telegram_chat_id

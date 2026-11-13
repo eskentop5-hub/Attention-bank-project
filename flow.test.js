@@ -12,6 +12,9 @@ process.env.TELEGRAM_BOT_TOKEN = 'test-token';
 process.env.TELEGRAM_BOT_USERNAME = 'attention_test_bot';
 process.env.TELEGRAM_GROUP_ID = '-100777';
 process.env.PLATFORM_FEE_PERCENT = '20';
+process.env.DEMO_MODE = '1'; // старый режим: бесплатное пополнение бюджета в тестовой базе
+process.env.DEMO_SANDBOX = '1';
+process.env.REGISTER_PER_HOUR = '1000';
 
 const sent = [];
 const { setTransport } = await import('../server/telegram/api.js');
@@ -422,12 +425,13 @@ test('v2: активность, выгрузка данных, настройк�
 });
 
 test('v2: в продакшене пополнение без оплаты отключено', async () => {
-  config.demoMode = false;
+  const { realContext } = await import('../server/db.js');
+  realContext().demo = false;
   try {
     const r = await co2('POST', '/api/company/deposit', { amount: 500 });
     assert.equal(r.status, 403);
   } finally {
-    config.demoMode = true;
+    realContext().demo = true;
   }
 });
 

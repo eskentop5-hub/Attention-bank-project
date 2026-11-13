@@ -11,6 +11,9 @@ const escHtml = (v) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;').re
 import { notify } from './notifications.js';
 import { validateAnswers, scoreSubmission, userTrust, FLAG_INFO, AUTO_APPROVE_SCORE, AUTO_REJECT_SCORE } from './verification.js';
 import { postCampaignToGroup } from '../telegram/group.js';
+import { testerLevel, levelName, maybeReferralBonus, LEVELS } from './growth.js';
+
+const cleanMinLevel = (v) => (v === undefined || v === null || v === '' ? 0 : int(v, { field: 'Уровень тестировщика', min: 0, max: LEVELS.length - 1 }));
 
 export const feeFor = (reward) => Math.ceil((reward * config.economy.platformFeePercent) / 100);
 
@@ -76,7 +79,7 @@ export function createCampaign(company, body) {
       reward, fee, maxParticipants, minSeconds, body.autoApprove ? 1 : 0, body.requireTelegram ? 1 : 0, JSON.stringify(questions), budget
     );
     const id = Number(r.lastInsertRowid);
-    run('UPDATE campaigns SET keywords = ?, invite_code = ? WHERE id = ?', JSON.stringify(cleanKeywords(body.keywords)), randomCode(8), id);
+    run('UPDATE campaigns SET keywords = ?, invite_code = ?, min_level = ? WHERE id = ?', JSON.stringify(cleanKeywords(body.keywords)), randomCode(8), cleanMinLevel(body.minLevel), id);
     // Бюджет резервируется сразу. Если денег не хватает — postTransaction бросит ошибку и всё откатится.
     postTransaction({
       userId: company.id,
@@ -119,6 +122,7 @@ export function updateCampaign(company, id, body) {
     const minSeconds = body.minSeconds !== undefined ? int(body.minSeconds, { field: 'Минимальное время', min: 0, max: 7200 }) : c.min_seconds;
     const autoApprove = body.autoApprove !== undefined ? (body.autoApprove ? 1 : 0) : c.auto_approve;
     const requireTelegram = body.requireTelegram !== undefined ? (body.requireTelegram ? 1 : 0) : c.require_telegram;
+    if (body.minLevel !== undefined) run('UPDATE campaigns SET min_level = ? WHERE id = ?', cleanMinLevel(body.minLevel), id);
 
     if (body.keywords !== undefined) run('UPDATE campaigns SET keywords = ? WHERE id = ?', JSON.stringify(cleanKeywords(body.keywords)), id);
     let questions = c.questions;
@@ -183,6 +187,8 @@ export function campaignPublic(c, userId = null) {
     minSeconds: c.min_seconds,
     autoApprove: !!c.auto_approve,
     requireTelegram: !!c.require_telegram,
+    minLevel: c.min_level || 0,
+    minLevelName: c.min_level ? levelName(c.min_level) : null,
     status: c.status,
     company: company?.company_name || company?.name,
     companyDemo: !!company?.is_demo,
@@ -215,10 +221,12 @@ function assignmentView(a) {
 
 export function listTasksForUser(user) {
   const interests = parseJson(user.interests, []);
+  const lvl = testerLevel(user.id).level;
   const rows = all("SELECT * FROM campaigns WHERE status = 'active' ORDER BY id DESC");
   return rows
     .map((c) => {
       const v = campaignPublic(c, user.id);
+      v.locked = !v.my && (c.min_level || 0) > lvl;
       const aud = v.audience;
       v.matches = aud.length === 0 || aud.some((i) => interests.includes(i));
       v.matchScore = aud.filter((i) => interests.includes(i)).length;
@@ -226,7 +234,7 @@ export function listTasksForUser(user) {
       return v;
     })
     .filter((v) => v.my || v.slotsLeft > 0)
-    .sort((a, b) => Number(!!a.my) - Number(!!b.my) || b.matchScore - a.matchScore || b.reward - a.reward);
+    .sort((a, b) => Number(!!a.my) - Number(!!b.my) || Number(a.locked) - Number(b.locked) || b.matchScore - a.matchScore || b.reward - a.reward);
 }
 
 export function getTaskForUser(user, id) {
@@ -234,7 +242,12 @@ export function getTaskForUser(user, id) {
   if (!c) throw notFound('Задание не найдено');
   const mine = one('SELECT id FROM assignments WHERE campaign_id = ? AND user_id = ?', id, user.id);
   if (c.status !== 'active' && !mine) throw notFound('Задание больше не доступно');
-  return campaignPublic(c, user.id);
+  const v = campaignPublic(c, user.id);
+  // Задание для опытных: показываем, какой нужен уровень и какой сейчас у участника
+  const lv = (c.min_level || 0) > 0 && !v.my ? testerLevel(user.id) : null;
+  v.locked = !!lv && c.min_level > lv.level;
+  if (lv) Object.assign(v, { myLevel: lv.level, myLevelName: lv.name });
+  return v;
 }
 
 export function startTask(user, id) {
@@ -245,6 +258,8 @@ export function startTask(user, id) {
       throw bad('Для этого задания нужно подтвердить аккаунт через Telegram (Профиль → Telegram)');
     const existing = one('SELECT * FROM assignments WHERE campaign_id = ? AND user_id = ?', id, user.id);
     if (existing) return campaignPublic(c, user.id);
+    if ((c.min_level || 0) > testerLevel(user.id).level)
+      throw bad(`Это задание открыто с уровня «${levelName(c.min_level)}». Уровень растёт за одобренные ответы хорошего качества.`);
     if (slotsTaken(id) >= c.max_participants) throw bad('Все места в этом задании уже заняты');
     run("INSERT INTO assignments (campaign_id, user_id, status, started_at) VALUES (?, ?, 'started', ?)", id, user.id, now());
     return campaignPublic(c, user.id);
@@ -265,8 +280,8 @@ export function submitTask(user, id, rawAnswers, meta = {}) {
       user.id,
       new Date(Date.now() - 864e5).toISOString()
     ).n;
-    if (today >= config.economy.dailySubmissionLimit)
-      throw new HttpError(429, `Лимит: не больше ${config.economy.dailySubmissionLimit} заданий за 24 часа`);
+    const limit = testerLevel(user.id).dailyLimit;
+    if (today >= limit) throw new HttpError(429, `Лимит вашего уровня: не больше ${limit} заданий за 24 часа`);
 
     const questions = parseJson(c.questions, []);
     const answers = validateAnswers(questions, rawAnswers);
@@ -352,6 +367,8 @@ function decide(assignmentId, c, decision, { rating = null, note = null, by = 'c
         link: `/#/rewards/${goal.id}`,
         telegram: `🎯 <b>Хватает на цель!</b>\n«${goal.title}» — ${goal.cost} AB\nНа балансе: <b>${balanceAfter} AB</b>`,
       });
+    // Реферальная программа: первое одобренное задание приглашённого друга
+    maybeReferralBonus(a.user_id);
   } else {
     run(
       "UPDATE assignments SET status = 'rejected', quality_rating = ?, review_note = ?, reviewed_by = ?, reviewed_at = ? WHERE id = ?",

@@ -20,6 +20,12 @@ CREATE TABLE IF NOT EXISTS users (
   avatar               TEXT,                        -- id встроенного аватара (a1…a12)
   consent_at           TEXT,
   deleted_at           TEXT,                        -- аккаунт удалён по просьбе участника (данные обезличены)
+  is_admin             INTEGER NOT NULL DEFAULT 0,  -- администратор платформы (создаётся из ADMIN_EMAIL/ADMIN_PASSWORD)
+  blocked_at           TEXT,                        -- заблокирован администратором (вход запрещён)
+  ref_code             TEXT,                        -- код реферальной ссылки участника
+  referred_by          INTEGER,                     -- кто пригласил (id участника)
+  signup_source        TEXT,                        -- откуда пришёл: utm_source / реферал / приглашение студии
+  email_verified_at    TEXT,
   created_at           TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
 
@@ -52,7 +58,8 @@ CREATE TABLE IF NOT EXISTS campaigns (
   created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
   closed_at         TEXT,
   keywords    TEXT,                    -- детали продукта, которые обычно упоминает тот, кто его реально прошёл (участнику не показываются)
-  invite_code TEXT                     -- код ссылки-приглашения тестировщиков
+  invite_code TEXT,                    -- код ссылки-приглашения тестировщиков
+  min_level   INTEGER NOT NULL DEFAULT 0 -- минимальный уровень тестировщика (0 — доступно всем)
 );
 
 CREATE TABLE IF NOT EXISTS assignments (
@@ -176,5 +183,55 @@ CREATE TABLE IF NOT EXISTS payouts (
   amount_kzt  INTEGER NOT NULL,
   status      TEXT NOT NULL DEFAULT 'requested',   -- requested | paid | rejected
   note        TEXT,
+  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  decided_at  TEXT,
+  admin_note  TEXT
+);
+
+-- v11: пополнение бюджета студией по счёту. AB начисляются только после того, как администратор
+-- подтвердил поступление денег (никаких «бесплатных» пополнений в настоящем режиме).
+CREATE TABLE IF NOT EXISTS topups (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  company_id  INTEGER NOT NULL REFERENCES users(id),
+  amount      INTEGER NOT NULL CHECK (amount > 0),   -- AB
+  amount_kzt  INTEGER NOT NULL,
+  invoice_no  TEXT NOT NULL,
+  status      TEXT NOT NULL DEFAULT 'requested',     -- requested | paid | rejected | cancelled
+  company_note TEXT,
+  admin_note  TEXT,
+  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+  decided_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_topups_status ON topups(status, id);
+
+-- v11: восстановление пароля (храним только хеш токена, ссылка живёт 1 час, одноразовая)
+CREATE TABLE IF NOT EXISTS password_resets (
+  token_hash  TEXT PRIMARY KEY,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  purpose     TEXT NOT NULL DEFAULT 'reset',          -- reset | verify_email
+  expires_at  TEXT NOT NULL,
+  used_at     TEXT,
   created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
 );
+
+-- v11: журнал ошибок сервера и браузера (без паролей и токенов)
+CREATE TABLE IF NOT EXISTS error_log (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  source      TEXT NOT NULL,                          -- server | client
+  message     TEXT NOT NULL,
+  detail      TEXT,
+  path        TEXT,
+  user_id     INTEGER,
+  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+
+-- v11: журнал действий администратора (кто, что и когда подтвердил)
+CREATE TABLE IF NOT EXISTS admin_log (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  admin_id    INTEGER NOT NULL,
+  action      TEXT NOT NULL,
+  target      TEXT,
+  detail      TEXT,
+  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_users_ref ON users(ref_code);
