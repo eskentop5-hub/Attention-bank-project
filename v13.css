@@ -111,3 +111,15 @@ body.presenting .mascot { opacity: 0; pointer-events: none; }
 .abi-chat .abi-sugg { display: grid; grid-template-columns: 1fr 1fr; align-content: start; gap: 6px; padding: 10px; border-top: 2px solid var(--line); max-height: 214px; overflow-y: auto; }
 .abi-chat .abi-sugg button { white-space: normal; text-align: left; line-height: 1.25; border-radius: 6px; padding: 8px 10px; min-height: 40px; }
 .abi-chat .abi-sugg.busy button { opacity: 0.5; pointer-events: none; }
+
+/* Проверка жюри: аккуратная вёрстка на телефоне и доступность */
+.auth-side-h { margin: 0 0 18px; font-family: var(--display); font-size: clamp(1.6rem, 3.4vw, 2.6rem); line-height: 1.08; text-transform: uppercase; color: var(--ink); }
+.field, .field .input, .field select { min-width: 0; max-width: 100%; }
+.tabs { max-width: 100%; }
+@media (max-width: 640px) {
+  .table { display: block; max-width: 100%; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; }
+  [style*="grid-column:span 6"], [style*="grid-column: span 6"] { grid-column: 1 / -1 !important; }
+  .reward-card .meta, .reward-card h3 { min-width: 0; overflow-wrap: anywhere; }
+  .review-actions { grid-template-columns: 1fr !important; }
+  .review-actions > * { min-width: 0; }
+}

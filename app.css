@@ -470,7 +470,7 @@ select.input { appearance: none; background-color: var(--surface-solid); backgro
 
 /* ================= Авторизация ================= */
 .auth { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 460px); gap: 56px; align-items: center; min-height: calc(100vh - 220px); }
-.auth-side h1 { font-size: clamp(2rem, 1.4rem + 2.4vw, 3.2rem); line-height: 1.02; letter-spacing: -0.03em; }
+.auth-side h1, .auth-side .auth-side-h { font-size: clamp(2rem, 1.4rem + 2.4vw, 3.2rem); line-height: 1.02; letter-spacing: -0.03em; }
 .auth-side ul { list-style: none; padding: 0; margin: 24px 0 0; display: grid; gap: 12px; }
 .auth-side li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; color: var(--ink-2); }
 .auth-side li svg { color: var(--sky); margin-top: 3px; }

@@ -810,8 +810,8 @@ async function admUsers(root, o, query) {
   const { users } = await D.api(`/api/admin/users?${new URLSearchParams({ q, role })}`);
   root.innerHTML = `
   <form class="filterbar" id="uf" role="search">
-    <input class="input" name="q" value="${esc(q)}" placeholder="Имя, email или студия" style="flex:1;min-width:200px">
-    <select class="input" name="role" style="width:auto"><option value="">Все</option><option value="user" ${role === 'user' ? 'selected' : ''}>Участники</option><option value="company" ${role === 'company' ? 'selected' : ''}>Студии</option></select>
+    <input class="input" name="q" aria-label="Поиск: имя, email или студия" value="${esc(q)}" placeholder="Имя, email или студия" style="flex:1;min-width:200px">
+    <select class="input" name="role" aria-label="Роль" style="width:auto"><option value="">Все</option><option value="user" ${role === 'user' ? 'selected' : ''}>Участники</option><option value="company" ${role === 'company' ? 'selected' : ''}>Студии</option></select>
     <button class="btn btn-ghost" type="submit">Найти</button>
   </form>
   <div class="panel panel-tight table-wrap"><table class="table adm-users"><thead><tr><th>Кто</th><th>Роль</th><th class="r">Баланс</th><th class="hide-sm">Источник</th><th>Статус</th><th></th></tr></thead><tbody>
@@ -935,7 +935,7 @@ async function admMarketing(root) {
       <h2 style="margin:0;font-size:1.15rem">Ссылка с меткой для рекламы</h2>
       <p class="small muted" style="margin:0">Разные ссылки для разных каналов покажут, откуда приходят люди и доходят ли до первого задания.</p>
       <div class="grid-3" style="gap:10px"><label class="field"><span class="label">Источник</span><input class="input" id="u-src" placeholder="instagram"></label><label class="field"><span class="label">Тип</span><input class="input" id="u-med" placeholder="stories"></label><label class="field"><span class="label">Кампания</span><input class="input" id="u-cmp" placeholder="pilot"></label></div>
-      <div class="invite-row"><input class="input" id="u-out" readonly value="${esc(base)}/"><button class="btn btn-ghost" type="button" data-copy="#u-out">Копировать</button></div>
+      <div class="invite-row"><input class="input" id="u-out" aria-label="Готовая ссылка с метками" readonly value="${esc(base)}/"><button class="btn btn-ghost" type="button" data-copy="#u-out">Копировать</button></div>
     </section>
   </div>
   <section class="panel panel-tight" style="margin-top:20px">
