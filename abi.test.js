@@ -126,7 +126,7 @@ test('ИИ-режим: модель вызывает инструменты пр
   config.mascot.anthropicKey = '';
 });
 
-test('Telegram: обычный текст — это просьба к Аби; /top, /goal, /level и /admin работают', async () => {
+test('Telegram: меню внизу чата, Аби только по кнопкам, задание дня, уведомления, /top /goal /level', async () => {
   const api = await import('../server/telegram/api.js');
   const sent = [];
   config.telegram.token = '1:TEST';
@@ -140,21 +140,45 @@ test('Telegram: обычный текст — это просьба к Аби; /
   const msg = (text) => handleUpdate({ message: { text, chat: { id: 777, type: 'private' }, from: { id: 777 } } });
   const last = () => sent.filter(([m]) => m === 'sendMessage').at(-1)[1];
 
-  await msg('найди задания до 10 минут');
+  const cb = (data) => handleUpdate({ callback_query: { id: 'q1', data, message: { message_id: 1, chat: { id: 777, type: 'private' } }, from: { id: 777 } } });
+
+  // Свободный текст Аби не принимает — бот показывает постоянное меню
+  await msg('привет, найди что-нибудь');
+  assert.match(last().text, /Выберите действие в меню/);
+  assert.ok(last().reply_markup.keyboard.flat().some((b) => b.text === '✦ Аби'), 'клавиатура меню внизу чата');
+
+  // Аби — только готовые вопросы кнопками
+  await msg('✦ Аби');
+  const presets = last().reply_markup.inline_keyboard.map(([b]) => b);
+  assert.ok(presets.every((b) => b.callback_data.startsWith('abi:')));
+  const i = presets.findIndex((b) => /Найди задания/.test(b.text));
+  await cb(`abi:${i}`);
   assert.ok(sent.some(([m]) => m === 'sendChatAction'), 'бот показывает «печатает…»');
   assert.match(last().text, /^✦ Вот что есть/);
-  assert.ok(last().reply_markup.inline_keyboard.every(([b]) => b.web_app?.url.startsWith('https://ab.example.com/#/tasks/')), 'кнопки открывают задания как Mini App');
+  const rows = last().reply_markup.inline_keyboard;
+  assert.ok(rows.slice(0, -1).every(([b]) => b.web_app?.url.startsWith('https://ab.example.com/#/tasks/')), 'кнопки открывают задания как Mini App');
+  assert.equal(rows.at(-1)[0].callback_data, 'abi:menu');
 
-  await msg('/top');
+  // Кнопки меню работают как команды
+  await msg('🏆 Топ недели');
   assert.match(last().text, /Рейтинг недели/);
   assert.match(last().text, /Айгерим.*← вы/);
-  await msg('/goal');
+  await msg('🎯 Цель');
   assert.match(last().text, /🎯/);
-  await msg('/level');
+  await msg('🎖 Уровень');
   assert.match(last().text, /Уровень: /);
+  await msg('📅 Задание дня');
+  assert.match(last().text, /Задание дня/);
+  assert.match(last().reply_markup.inline_keyboard[0][0].callback_data, /^t:\d+$/);
+  await msg('⚙️ Уведомления');
+  assert.match(last().text, /включены/);
+  await cb('nt:toggle');
+  assert.equal(one('SELECT notify_telegram FROM users WHERE id = ?', user.id).notify_telegram, 0);
+  await cb('nt:toggle');
+  assert.equal(one('SELECT notify_telegram FROM users WHERE id = ?', user.id).notify_telegram, 1);
   await msg('/admin');
   assert.match(last().text, /только для администратора/);
   await msg('/help');
-  assert.match(last().text, /Просто напишите — ответит Аби/);
+  assert.match(last().text, /Меню — внизу чата/);
   config.telegram.token = '';
 });

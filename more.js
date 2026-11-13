@@ -1,10 +1,12 @@
 // Telegram v13: Аби в чате (пишешь обычным текстом — он выполняет), рейтинг недели, награды, цель,
 // уровень, реферальная ссылка и сводка для администратора. Всё через те же сервисы, что и сайт.
 import { config } from '../config.js';
-import { one, all } from '../db.js';
+import { one, all, run } from '../db.js';
 import { call, sendMessage, escapeHtml } from './api.js';
 import { appButton } from './features.js';
-import { assist } from '../services/assistant.js';
+import { assist, suggestionsFor } from '../services/assistant.js';
+import { listTasksForUser } from '../services/campaigns.js';
+import { dailyChallenge } from '../services/stats.js';
 import { listRewards } from '../services/rewards.js';
 import { testerLevel, referralStats } from '../services/growth.js';
 import { overview } from '../services/admin.js';
@@ -20,6 +22,16 @@ const siteBtn = (text, hash) => appButton(text, `/${hash}`) || (https() ? { text
 // ---------------------------------------------------------------- Аби в чате
 const toHtml = (s) => escapeHtml(s).replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>');
 const history = new Map(); // chatId → последние реплики (в памяти: короткий контекст разговора)
+
+/** Аби только по кнопкам: готовые вопросы и команды для роли пользователя */
+export const abiPresets = (user) => suggestionsFor(user);
+export function abiMenuMsg(user) {
+  const list = abiPresets(user);
+  return [
+    '✦ <b>Аби</b> — выберите вопрос или команду. Я найду, покажу и открою нужное.',
+    kb(list.map((q, i) => [{ text: q.slice(0, 60), callback_data: `abi:${i}` }])),
+  ];
+}
 
 export async function abiReply(chatId, user, text) {
   await call('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {});
@@ -41,7 +53,9 @@ export async function abiReply(chatId, user, text) {
   }
   const src = (r.sources || []).length ? `\n\n<i>Источники:</i>\n${r.sources.map((s) => `• <a href="${escapeHtml(s.url)}">${escapeHtml(s.title)}</a>`).join('\n')}` : '';
   const mode = r.mode === 'ai' ? (r.used?.includes('web_search') ? '\n\n<i>✦ ИИ · искал в интернете</i>' : '') : '';
-  return sendMessage(chatId, `✦ ${toHtml(r.reply)}${src}${mode}`, rows.length ? kb(rows.slice(0, 5)) : {});
+  rows.splice(5);
+  rows.push([{ text: '✦ Другие вопросы', callback_data: 'abi:menu' }]);
+  return sendMessage(chatId, `✦ ${toHtml(r.reply)}${src}${mode}`, kb(rows));
 }
 
 // ---------------------------------------------------------------- рейтинг недели
@@ -103,9 +117,10 @@ export function adminText() {
   return `🛠 <b>Пульт</b>\n\n👥 Участники: ${c.users} (+${c.signups7d} за 7 дней)\n🏢 Студии: ${c.companies} · активных кампаний: ${c.activeCampaigns}\n✅ Одобрено ответов: ${c.approved} · ждут проверки: ${c.pendingReviews}\n💰 Заявки на бюджет: ${c.pendingTopups} · на вывод: ${c.pendingPayouts}\n⚠️ Ошибок за сутки: ${o.errors24h}\n\n🏦 Казна: ${o.treasury.ok && o.ledger ? 'сходится ✅' : 'НЕ сходится ❗'}\n🗄 Копии базы: ${b.enabled ? `${b.provider === 'telegram' ? 'в Telegram' : 'в S3'}${b.lastOkAt ? `, последняя ${b.lastOkAt.slice(11, 16)} UTC` : ''}` : 'выключены'}`;
 }
 
-export const HELP = `<b>Команды</b>
-✦ Просто напишите — ответит Аби и выполнит: «найди задания до 10 минут», «на что мне хватит?», «поставь цель …»
+export const HELP = `<b>Меню</b> — кнопки внизу чата 👇 Или команды:
+/abi — Аби: готовые вопросы и команды
 /tasks — задания прямо в чате
+/daily — задание дня и челлендж
 /goal — моя цель и прогресс
 /rewards — награды
 /top — рейтинг недели 🏆
@@ -114,12 +129,16 @@ export const HELP = `<b>Команды</b>
 /stats — статистика и серия 🔥
 /balance — баланс · /history — транзакции
 /remind — напоминание о серии
+/notify — уведомления вкл/выкл
+/menu — показать меню
 /app — открыть приложение
 /cancel — прервать задание · /unlink — отключить Telegram`;
 
 export const COMMANDS = [
-  { command: 'abi', description: 'Аби: спросить или попросить сделать' },
+  { command: 'menu', description: 'Меню' },
+  { command: 'abi', description: 'Аби: готовые вопросы' },
   { command: 'tasks', description: 'Задания прямо в чате' },
+  { command: 'daily', description: 'Задание дня' },
   { command: 'goal', description: 'Моя цель и прогресс' },
   { command: 'rewards', description: 'Награды' },
   { command: 'top', description: 'Рейтинг недели' },
@@ -127,6 +146,82 @@ export const COMMANDS = [
   { command: 'ref', description: 'Пригласить друзей' },
   { command: 'stats', description: 'Статистика и серия' },
   { command: 'balance', description: 'Баланс AB Points' },
+  { command: 'notify', description: 'Уведомления вкл/выкл' },
   { command: 'app', description: 'Открыть приложение' },
   { command: 'help', description: 'Все команды' },
 ];
+
+// ---------------------------------------------------------------- удобное меню (v13)
+// Постоянная клавиатура внизу чата: всё главное в одно касание, без набора команд
+export const MENU = [
+  ['🎮 Задания', '📅 Задание дня'],
+  ['🎯 Цель', '🎁 Награды'],
+  ['🏆 Топ недели', '📊 Статистика'],
+  ['🎖 Уровень', '🤝 Друзья'],
+  ['✦ Аби', '⚙️ Уведомления'],
+];
+const MENU_CMD = {
+  '🎮 Задания': '/tasks', '📅 Задание дня': '/daily', '🎯 Цель': '/goal', '🎁 Награды': '/rewards', '🏆 Топ недели': '/top',
+  '📊 Статистика': '/stats', '🎖 Уровень': '/level', '🤝 Друзья': '/ref', '✦ Аби': '/abi', '⚙️ Уведомления': '/notify',
+};
+export const menuCommand = (text) => MENU_CMD[String(text || '').trim()] || null;
+export const menuKb = () => ({ reply_markup: { keyboard: MENU.map((r) => r.map((text) => ({ text }))), resize_keyboard: true, is_persistent: true, input_field_placeholder: 'Выберите действие в меню' } });
+
+/** Задание дня: лучшее открытое задание по интересам + прогресс челленджа */
+export function dailyMsg(user) {
+  const open = listTasksForUser(user).filter((t) => !t.my && !t.locked);
+  const ch = dailyChallenge(user.id);
+  const head = `📅 <b>Задание дня</b>
+Челлендж: <b>${ch.done}/${ch.goal}</b> ${ch.done >= ch.goal ? '✅ выполнен!' : 'заданий сегодня'}`;
+  if (!open.length) return [`${head}
+
+Открытых заданий сейчас нет — мы напишем, когда появятся.`, {}];
+  const t = open.find((x) => x.matches) || open[0];
+  return [
+    `${head}
+
+🎮 <b>${escapeHtml(t.title)}</b>
+${escapeHtml(String(t.description || '').slice(0, 220))}${String(t.description || '').length > 220 ? '…' : ''}
+
+⏱ ~${t.estMinutes || 5} мин · 🪙 <b>+${t.reward} AB</b> · ${escapeHtml(t.company || '')}`,
+    kb([[{ text: '▶ Пройти прямо здесь', callback_data: `t:${t.id}` }], [siteBtn('📱 Открыть на сайте', `#/tasks/${t.id}`)]]),
+  ];
+}
+
+/** Уведомления в Telegram: включить или выключить одной кнопкой */
+export function notifyMsg(user, toggle = false) {
+  let on = !!user.notify_telegram;
+  if (toggle) {
+    on = !on;
+    run('UPDATE users SET notify_telegram = ? WHERE id = ?', on ? 1 : 0, user.id);
+  }
+  return [
+    `⚙️ <b>Уведомления</b>: ${on ? '🔔 включены' : '🔕 выключены'}
+Проверка ответов, начисления AB, новые задания по интересам.`,
+    kb([[{ text: on ? '🔕 Выключить' : '🔔 Включить', callback_data: 'nt:toggle' }]]),
+  ];
+}
+
+/** Кнопки Аби и настроек (callback_data abi:* и nt:*) */
+export async function moreCallback(cq, user) {
+  const chatId = cq.message?.chat?.id;
+  const data = String(cq.data || '');
+  const answer = (text = '') => call('answerCallbackQuery', { callback_query_id: cq.id, text }).catch(() => {});
+  if (data === 'abi:menu') {
+    await answer();
+    return sendMessage(chatId, ...abiMenuMsg(user));
+  }
+  if (data.startsWith('abi:')) {
+    const q = abiPresets(user)[Number(data.slice(4))];
+    await answer(q ? '✦ Аби думает…' : '');
+    if (!q) return sendMessage(chatId, ...abiMenuMsg(user));
+    return abiReply(chatId, user, q);
+  }
+  if (data === 'nt:toggle') {
+    if (!user) return answer('Сначала подключите аккаунт: /start');
+    const [text, extra] = notifyMsg(user, true);
+    await answer(text.includes('включены') ? 'Уведомления включены' : 'Уведомления выключены');
+    return call('editMessageText', { chat_id: chatId, message_id: cq.message.message_id, text, parse_mode: 'HTML', ...extra }).catch(() => sendMessage(chatId, text, extra));
+  }
+  return answer();
+}

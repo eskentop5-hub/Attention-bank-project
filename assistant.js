@@ -298,6 +298,8 @@ function pickReward(text, u) {
   const scored = list.map((r) => [r, matchScore(r.title, text)]).filter(([, s]) => s > 0).sort((a, b) => b[1] - a[1]);
   return scored[0]?.[0] || null;
 }
+// Служебные слова команды не должны сужать поиск («найди», «до 10 минут»)
+const STOP = /(найди|покажи|подбери|какие|есть|мне|все|до\s*\d+\s*мин[а-я]*|за\s*\d+\s*мин[а-я]*|\?)/gi;
 const fmtList = (items, line) => items.map((x, i) => `${i + 1}. ${line(x)}`).join('\n');
 
 function localTurn(message, u) {
@@ -326,7 +328,7 @@ function localTurn(message, u) {
     const r = call('draft_campaign', { title, reward: num(m, /(\d{1,4})\s*(ab|аб|балл)/i), max_participants: num(m, /(\d{1,4})\s*(участник|человек|тестировщик)/i), est_minutes: num(m, /(\d{1,3})\s*мин/i), category: /видео|трейлер/i.test(m) ? 'video_review' : /приложени/i.test(m) ? 'app_testing' : /ux|интерфейс|прототип/i.test(m) ? 'ux_research' : 'game_testing' });
     return answer(`Собрал черновик «${r.actions[0].draft.title}»: награда ${r.actions[0].draft.reward} AB, ${r.actions[0].draft.maxParticipants} участников, ${r.actions[0].draft.questions.length} вопроса. Проверь форму и нажми «Опубликовать» — без тебя ничего не запустится.`, r);
   }
-  if (u?.role === 'company' && (RE.company.test(m) || RE.balance.test(m))) {
+  if (u?.role === 'company' && (RE.company.test(m) || RE.balance.test(m)) && (/дела|мои[хм]?\s+(кампан|тест)/i.test(m) || !/(^|\s)(как|почему|зачем)(\s|$)/i.test(m))) {
     const r = call('company_overview');
     const t = r.result.totals;
     return answer(`Бюджет: ${r.result.budget} AB. Активных кампаний: ${t.active}, ждут проверки: ${t.pending}, одобрено результатов: ${t.results}${t.avgCostPerResult ? `, средняя цена результата ${t.avgCostPerResult} AB` : ''}.`, r);
@@ -335,11 +337,11 @@ function localTurn(message, u) {
     const reward = pickReward(m.replace(RE.goal, ''), u);
     if (reward && /(постав|сделай|выбер|установ|хочу)/i.test(m)) {
       const r = call('set_goal', { reward_id: reward.id });
-      return answer(`Готово: цель — «${reward.title}». ${r.result.need > 0 ? `Осталось ${r.result.need} AB — подберу задания, если скажешь «найди задания».` : 'Баллов уже хватает!'}`, r);
+      return answer(`Готово: цель — «${reward.title}». ${r.result.need > 0 ? `Осталось ${r.result.need} AB — нажми «Найди задания» — подберу, где заработать.` : 'Баллов уже хватает!'}`, r);
     }
     const r = call('my_status');
     const g = r.result.goal;
-    return answer(g ? `Твоя цель — «${g.title}» за ${g.cost} AB. ${g.need > 0 ? `Осталось ${g.need} AB.` : 'Баллов хватает — можно обменять!'}` : 'Цели пока нет. Скажи, например: «поставь цель Steppe Runner».', r);
+    return answer(g ? `Твоя цель — «${g.title}» за ${g.cost} AB. ${g.need > 0 ? `Осталось ${g.need} AB.` : 'Баллов хватает — можно обменять!'}` : 'Цели пока нет. Открой награды и нажми «В цель» на той, что нравится.', r);
   }
   if (RE.redeem.test(m) && u?.role === 'user') {
     const reward = pickReward(m.replace(RE.redeem, ''), u);
@@ -357,16 +359,16 @@ function localTurn(message, u) {
     const r = call('my_stats');
     return answer(`Сегодня +${r.result.today} AB, вчера +${r.result.yesterday} AB, за неделю +${r.result.week} AB. Серия: ${r.result.streak} 🔥`, r);
   }
-  if (RE.rewards.test(m) && !/(как|почему|зачем|что такое)/i.test(m)) {
+  if (RE.rewards.test(m) && !/(^|\s)(как|почему|зачем)(\s|$)|что такое/i.test(m)) {
     const affordable = /(хватит|могу|доступн|сейчас)/i.test(m);
-    const r = call('find_rewards', { query: m.replace(RE.rewards, ''), affordable_only: affordable, max_cost: num(m, /до\s*(\d{1,5})/i) });
+    const r = call('find_rewards', { query: m.replace(RE.rewards, '').replace(STOP, ' '), affordable_only: affordable, max_cost: num(m, /до\s*(\d{1,5})/i) });
     if (r.result.error) return answer(r.result.error, r);
     const list = r.result.rewards;
-    if (!list.length) return answer(affordable ? 'Пока не хватает ни на одну награду. Скажи «найди задания» — подберу, где заработать.' : 'Подходящих наград сейчас нет.', r);
-    return answer(`${affordable ? 'Хватает на' : 'Нашёл'}:\n${fmtList(list, (x) => `${x.title} — ${x.cost} AB${x.need ? ` (не хватает ${x.need})` : ''}`)}${u ? '\nСкажи «обменяй …» или «поставь цель …».' : ''}`, r);
+    if (!list.length) return answer(affordable ? 'Пока не хватает ни на одну награду. Нажми «Найди задания» — подберу, где заработать.' : 'Подходящих наград сейчас нет.', r);
+    return answer(`${affordable ? 'Хватает на' : 'Нашёл'}:\n${fmtList(list, (x) => `${x.title} — ${x.cost} AB${x.need ? ` (не хватает ${x.need})` : ''}`)}${u ? '\nОткрой награду — там кнопки «Получить» и «В цель».' : ''}`, r);
   }
-  if (RE.tasks.test(m) && !/(как|почему|зачем|что такое)/i.test(m)) {
-    const r = call('find_tasks', { query: m.replace(RE.tasks, ''), max_minutes: num(m, /(?:до|за|меньше)\s*(\d{1,3})\s*мин/i) });
+  if (RE.tasks.test(m) && !/(^|\s)(как|почему|зачем)(\s|$)|что такое/i.test(m)) {
+    const r = call('find_tasks', { query: m.replace(RE.tasks, '').replace(STOP, ' '), max_minutes: num(m, /(?:до|за|меньше)\s*(\d{1,3})\s*мин/i) });
     if (r.result.error) return answer(r.result.error, r);
     const list = r.result.tasks;
     if (!list.length) return answer('Сейчас нет открытых заданий под запрос. Загляни позже — я напомню в Telegram, если он подключён.', r);
@@ -381,10 +383,12 @@ function localTurn(message, u) {
   return answer(faqAnswer(m));
 }
 
+// Готовые вопросы и команды: Аби работает только по кнопкам (без свободного ввода) — на сайте и в Telegram
 export function suggestionsFor(u) {
-  if (!u) return ['Что такое ATTENTION BANK?', 'Какие награды есть?', 'Открой презентацию', 'Как проверяют ответы?'];
-  if (u.role === 'company') return ['Как дела у моих кампаний?', 'Создай плейтест «Гонки по степи», 30 AB, 15 участников', 'Открой выручку', 'Как работает проверка?'];
-  return ['Мой баланс и уровень', 'Найди задания до 10 минут', 'На что мне хватит баллов?', 'Поставь цель …', 'Моя статистика', 'Открой награды'];
+  if (!u) return ['Что такое ATTENTION BANK?', 'Какие награды есть?', 'Как проверяют ответы?', 'AB Points — это деньги?', 'Открой презентацию', 'Открой регистрацию'];
+  if (u.role === 'company')
+    return ['Как дела у моих кампаний?', 'Создай плейтест «Гонки по степи», 30 AB, 15 участников', 'Открой выручку', 'Открой бюджет', 'Как проверяют ответы?', 'Открой новую кампанию'];
+  return ['Мой баланс и уровень', 'Найди задания до 10 минут', 'На что мне хватит баллов?', 'Моя цель', 'Моя статистика', 'Пригласить друзей', 'Как проверяют ответы?', 'AB Points — это деньги?'];
 }
 
 // ---------------------------------------------------------------- ИИ-режим (Claude + инструменты + поиск в интернете)

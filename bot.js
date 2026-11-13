@@ -12,7 +12,7 @@ import { notify } from '../services/notifications.js';
 import { randomCode } from '../util.js';
 import { categoryLabel } from '../catalog.js';
 import { appButton, listTasks, flowText, cancelFlow, handleCallback, statsText, setRemind, remindOn, startReminders, setupMenuButton } from './features.js';
-import { abiReply, topText, rewardsMsg, goalMsg, levelText, refMsg, adminText, HELP, COMMANDS } from './more.js';
+import { abiReply, abiMenuMsg, topText, rewardsMsg, goalMsg, levelText, refMsg, adminText, dailyMsg, notifyMsg, moreCallback, menuCommand, menuKb, HELP, COMMANDS } from './more.js';
 
 // ---------- Коды привязки ----------
 
@@ -87,12 +87,21 @@ async function reply(chatId, text, extra) {
 }
 
 export async function handleUpdate(update) {
-  if (update.callback_query) return handleCallback(update.callback_query);
+  if (update.callback_query) {
+    const d = String(update.callback_query.data || '');
+    if (d.startsWith('abi:') || d.startsWith('nt:')) {
+      const u = one('SELECT * FROM users WHERE telegram_chat_id = ?', String(update.callback_query.message?.chat?.id));
+      return moreCallback(update.callback_query, u);
+    }
+    return handleCallback(update.callback_query);
+  }
   const msg = update.message || update.edited_message;
   if (!msg?.text || !msg.chat) return;
   const chatId = msg.chat.id;
   const isPrivate = msg.chat.type === 'private';
-  const [rawCmd, ...args] = msg.text.trim().split(/\s+/);
+  // Кнопки постоянного меню приходят обычным текстом — превращаем их в команды
+  const viaMenu = msg.chat.type === 'private' ? menuCommand(msg.text) : null;
+  const [rawCmd, ...args] = (viaMenu || msg.text.trim()).split(/\s+/);
   const cmd = rawCmd.split('@')[0].toLowerCase();
   const user = one('SELECT * FROM users WHERE telegram_chat_id = ?', String(chatId));
 
@@ -115,102 +124,114 @@ export async function handleUpdate(update) {
 
   // Ответ на вопрос задания, которое проходят прямо в чате
   if (!cmd.startsWith('/') && user && (await flowText(chatId, msg.text))) return;
-  // v13: обычный текст (не команда и не ответ на задание) — это просьба к Аби
-  if (!cmd.startsWith('/')) return abiReply(chatId, user, msg.text.slice(0, 800));
+  // Свободный текст Аби не принимает — только готовые вопросы. Показываем меню.
+  if (!cmd.startsWith('/')) return reply(chatId, 'Выберите действие в меню внизу 👇 или откройте готовые вопросы Аби: /abi', menuKb());
   const needAcc = () => reply(chatId, 'Аккаунт не подключён. Отправьте /start, чтобы узнать как.');
   const app = appButton();
   const appKb = app ? { reply_markup: { inline_keyboard: [[app]] } } : {};
 
-  switch (cmd) {
-    case '/abi':
-    case '/ai':
-      if (!args.length) return reply(chatId, '✦ Я Аби. Напишите просьбу обычным текстом, например: «найди задания до 10 минут», «на что мне хватит баллов?», «поставь цель Steam-ключ».');
-      return abiReply(chatId, user, args.join(' ').slice(0, 800));
-    case '/top':
-      return reply(chatId, topText(user), appKb);
-    case '/rewards':
-      if (!user || user.role !== 'user') return user ? reply(chatId, 'Награды — для участников. Кабинет студии: /app') : needAcc();
-      return reply(chatId, ...rewardsMsg(user));
-    case '/goal':
-      if (!user || user.role !== 'user') return needAcc();
-      return reply(chatId, ...goalMsg(user));
-    case '/level':
-      if (!user || user.role !== 'user') return needAcc();
-      return reply(chatId, levelText(user), appKb);
-    case '/ref':
-      if (!user || user.role !== 'user') return needAcc();
-      return reply(chatId, ...refMsg(user));
-    case '/admin':
-      if (!user?.is_admin) return reply(chatId, 'Команда только для администратора.');
-      return reply(chatId, adminText());
-    case '/app':
-      return reply(chatId, app ? 'Откройте ATTENTION BANK прямо в Telegram:' : `Сайт: ${config.publicUrl}`, appKb);
-    case '/stats':
-      if (!user) return reply(chatId, 'Аккаунт не подключён. Отправьте /start, чтобы узнать как.');
-      return reply(chatId, statsText(user), appKb);
-    case '/cancel':
-      return reply(chatId, cancelFlow(chatId) ? 'Задание прервано. Его можно продолжить позже: /tasks' : 'Нечего отменять.');
-    case '/remind': {
-      if (!user) return reply(chatId, 'Аккаунт не подключён. Отправьте /start, чтобы узнать как.');
-      const want = (args[0] || '').toLowerCase();
-      if (want === 'on' || want === 'off') setRemind(user.id, want === 'on');
-      const on = remindOn(user.id);
-      return reply(chatId, `⏰ Напоминание о серии: <b>${on ? 'включено' : 'выключено'}</b>
-Приходит в ${config.telegram.reminderHour}:00, если вы ещё не заходили сегодня.`, {
-        reply_markup: { inline_keyboard: [[{ text: on ? '🔕 Выключить' : '🔔 Включить', callback_data: on ? 'rm:off' : 'rm:on' }]] },
-      });
-    }
-    case '/start': {
-      const code = (args[0] || '').toUpperCase();
-      // Приглашение студии: t.me/<бот>?start=join_<КОД> — показываем задание и ведём в него
-      if (code.startsWith('JOIN_')) {
-        const inv = code.slice(5);
-        const c = one('SELECT id, title, description, reward, est_minutes, status FROM campaigns WHERE invite_code = ?', inv);
-        if (!c || c.status !== 'active') return reply(chatId, '⚠️ Приглашение не найдено или набор закрыт. Другие задания: /tasks');
-        const open = appButton('📱 Открыть задание', `/#/join/${inv}`) || { text: 'Открыть задание', url: `${config.publicUrl}/#/join/${inv}` };
-        return reply(chatId, `🎮 <b>${escapeHtml(c.title)}</b>
-${escapeHtml(c.description)}
-
-⏱ ~${c.est_minutes || 5} мин · 🪙 +${c.reward} AB Points`, {
-          reply_markup: { inline_keyboard: [[open], ...(user ? [[{ text: '▶ Пройти в чате', callback_data: `t:${c.id}` }]] : [])] },
+  const out = await (async () => {
+    switch (cmd) {
+      case '/abi':
+      case '/ai':
+        return reply(chatId, ...abiMenuMsg(user));
+      case '/menu':
+        return reply(chatId, '📋 Меню — внизу чата. Всё главное в одно касание.', menuKb());
+      case '/daily':
+        if (!user || user.role !== 'user') return needAcc();
+        return reply(chatId, ...dailyMsg(user));
+      case '/notify':
+        if (!user) return needAcc();
+        return reply(chatId, ...notifyMsg(user));
+      case '/top':
+        return reply(chatId, topText(user), appKb);
+      case '/rewards':
+        if (!user || user.role !== 'user') return user ? reply(chatId, 'Награды — для участников. Кабинет студии: /app') : needAcc();
+        return reply(chatId, ...rewardsMsg(user));
+      case '/goal':
+        if (!user || user.role !== 'user') return needAcc();
+        return reply(chatId, ...goalMsg(user));
+      case '/level':
+        if (!user || user.role !== 'user') return needAcc();
+        return reply(chatId, levelText(user), appKb);
+      case '/ref':
+        if (!user || user.role !== 'user') return needAcc();
+        return reply(chatId, ...refMsg(user));
+      case '/admin':
+        if (!user?.is_admin) return reply(chatId, 'Команда только для администратора.');
+        return reply(chatId, adminText());
+      case '/app':
+        return reply(chatId, app ? 'Откройте ATTENTION BANK прямо в Telegram:' : `Сайт: ${config.publicUrl}`, appKb);
+      case '/stats':
+        if (!user) return reply(chatId, 'Аккаунт не подключён. Отправьте /start, чтобы узнать как.');
+        return reply(chatId, statsText(user), appKb);
+      case '/cancel':
+        return reply(chatId, cancelFlow(chatId) ? 'Задание прервано. Его можно продолжить позже: /tasks' : 'Нечего отменять.');
+      case '/remind': {
+        if (!user) return reply(chatId, 'Аккаунт не подключён. Отправьте /start, чтобы узнать как.');
+        const want = (args[0] || '').toLowerCase();
+        if (want === 'on' || want === 'off') setRemind(user.id, want === 'on');
+        const on = remindOn(user.id);
+        return reply(chatId, `⏰ Напоминание о серии: <b>${on ? 'включено' : 'выключено'}</b>
+  Приходит в ${config.telegram.reminderHour}:00, если вы ещё не заходили сегодня.`, {
+          reply_markup: { inline_keyboard: [[{ text: on ? '🔕 Выключить' : '🔔 Включить', callback_data: on ? 'rm:off' : 'rm:on' }]] },
         });
       }
-      if (code) {
-        const res = linkAccount(code, chatId, msg.from?.username);
-        if (!res.ok) return reply(chatId, `⚠️ ${escapeHtml(res.reason)}`);
+      case '/start': {
+        const code = (args[0] || '').toUpperCase();
+        // Приглашение студии: t.me/<бот>?start=join_<КОД> — показываем задание и ведём в него
+        if (code.startsWith('JOIN_')) {
+          const inv = code.slice(5);
+          const c = one('SELECT id, title, description, reward, est_minutes, status FROM campaigns WHERE invite_code = ?', inv);
+          if (!c || c.status !== 'active') return reply(chatId, '⚠️ Приглашение не найдено или набор закрыт. Другие задания: /tasks');
+          const open = appButton('📱 Открыть задание', `/#/join/${inv}`) || { text: 'Открыть задание', url: `${config.publicUrl}/#/join/${inv}` };
+          return reply(chatId, `🎮 <b>${escapeHtml(c.title)}</b>
+  ${escapeHtml(c.description)}
+
+  ⏱ ~${c.est_minutes || 5} мин · 🪙 +${c.reward} AB Points`, {
+            reply_markup: { inline_keyboard: [[open], ...(user ? [[{ text: '▶ Пройти в чате', callback_data: `t:${c.id}` }]] : [])] },
+          });
+        }
+        if (code) {
+          const res = linkAccount(code, chatId, msg.from?.username);
+          if (!res.ok) return reply(chatId, `⚠️ ${escapeHtml(res.reason)}`);
+          return reply(
+            chatId,
+            `✅ <b>Аккаунт подтверждён</b>\n${escapeHtml(res.user.name)}, теперь уведомления ATTENTION BANK приходят сюда.` +
+              (res.bonus ? `\n\n🎉 <b>+${res.bonus} AB Points</b> за подтверждение\nNew balance: <b>${res.user.balance} AB</b>` : '') +
+              `\n\nКоманды: /tasks /stats /balance /help`,
+            appKb
+          );
+        }
+        if (user) return reply(chatId, `С возвращением, ${escapeHtml(user.name)}! Баланс: <b>${user.balance} AB</b>\nЗадания можно проходить прямо здесь: /tasks`, appKb);
         return reply(
           chatId,
-          `✅ <b>Аккаунт подтверждён</b>\n${escapeHtml(res.user.name)}, теперь уведомления ATTENTION BANK приходят сюда.` +
-            (res.bonus ? `\n\n🎉 <b>+${res.bonus} AB Points</b> за подтверждение\nNew balance: <b>${res.user.balance} AB</b>` : '') +
-            `\n\nКоманды: /tasks /stats /balance /help`,
+          `👋 Это бот <b>ATTENTION BANK</b>.\n\nОткройте приложение кнопкой ниже — войдите или зарегистрируйтесь, и Telegram подключится автоматически.\n\nИли: сайт → Профиль → «Подключить Telegram», либо отправьте сюда <code>/start ВАШ_КОД</code>.\n\n${config.publicUrl}`,
           appKb
         );
       }
-      if (user) return reply(chatId, `С возвращением, ${escapeHtml(user.name)}! Баланс: <b>${user.balance} AB</b>\nЗадания можно проходить прямо здесь: /tasks`, appKb);
-      return reply(
-        chatId,
-        `👋 Это бот <b>ATTENTION BANK</b>.\n\nОткройте приложение кнопкой ниже — войдите или зарегистрируйтесь, и Telegram подключится автоматически.\n\nИли: сайт → Профиль → «Подключить Telegram», либо отправьте сюда <code>/start ВАШ_КОД</code>.\n\n${config.publicUrl}`,
-        appKb
-      );
+      case '/balance':
+        if (!user) return reply(chatId, 'Аккаунт не подключён. Отправьте /start, чтобы узнать как.');
+        return reply(chatId, `💳 Баланс: <b>${user.balance} AB Points</b>`, linkButton('Открыть кошелёк', '/#/wallet'));
+      case '/history': {
+        if (!user) return reply(chatId, 'Аккаунт не подключён. Отправьте /start, чтобы узнать как.');
+        const rows = all('SELECT amount, title, created_at FROM transactions WHERE user_id = ? ORDER BY id DESC LIMIT 7', user.id);
+        if (!rows.length) return reply(chatId, 'Транзакций пока нет. Выполните первое задание: /tasks');
+        return reply(chatId, `<b>Последние транзакции</b>\n` + rows.map((r) => `${fmt(r.amount)} AB · ${escapeHtml(r.title)}`).join('\n'));
+      }
+      case '/tasks':
+        return listTasks(chatId, user);
+      case '/unlink':
+        if (!user) return reply(chatId, 'Аккаунт и так не подключён.');
+        unlinkTelegram(user.id);
+        return reply(chatId, 'Telegram отключён от аккаунта. Уведомления больше не придут.');
+      default:
+        return reply(chatId, HELP + (user?.is_admin ? '\n\n🛠 /admin — сводка · /backup — копия базы' : ''), appKb);
     }
-    case '/balance':
-      if (!user) return reply(chatId, 'Аккаунт не подключён. Отправьте /start, чтобы узнать как.');
-      return reply(chatId, `💳 Баланс: <b>${user.balance} AB Points</b>`, linkButton('Открыть кошелёк', '/#/wallet'));
-    case '/history': {
-      if (!user) return reply(chatId, 'Аккаунт не подключён. Отправьте /start, чтобы узнать как.');
-      const rows = all('SELECT amount, title, created_at FROM transactions WHERE user_id = ? ORDER BY id DESC LIMIT 7', user.id);
-      if (!rows.length) return reply(chatId, 'Транзакций пока нет. Выполните первое задание: /tasks');
-      return reply(chatId, `<b>Последние транзакции</b>\n` + rows.map((r) => `${fmt(r.amount)} AB · ${escapeHtml(r.title)}`).join('\n'));
-    }
-    case '/tasks':
-      return listTasks(chatId, user);
-    case '/unlink':
-      if (!user) return reply(chatId, 'Аккаунт и так не подключён.');
-      unlinkTelegram(user.id);
-      return reply(chatId, 'Telegram отключён от аккаунта. Уведомления больше не придут.');
-    default:
-      return reply(chatId, HELP + (user?.is_admin ? '\n\n🛠 /admin — сводка · /backup — копия базы' : ''), appKb);
-  }
+  })();
+  // После /start и /help показываем постоянное меню внизу чата
+  if (cmd === '/start' || cmd === '/help') await reply(chatId, '📋 Меню — внизу чата 👇 Аби: /abi', menuKb());
+  return out;
 }
 
 function tasksText() {
