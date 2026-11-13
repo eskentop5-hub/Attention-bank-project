@@ -568,11 +568,14 @@ export function startTour(force = false) {
   let i = 0;
   const ov = document.createElement('div');
   ov.className = 'tour';
-  ov.innerHTML = `<div class="spot"></div><div class="tour-card" role="dialog" aria-modal="true" aria-labelledby="tour-t"><div class="tour-mini">${MASCOT_SVG}</div><div><p class="tiny muted tour-n"></p><h3 id="tour-t"></h3><p class="tour-d"></p><div class="tour-acts"><button class="btn btn-quiet btn-sm" data-t="skip">Пропустить</button><button class="btn btn-ghost btn-sm" data-t="prev">Назад</button><button class="btn btn-primary btn-sm" data-t="next">Далее</button></div></div></div>`;
+  ov.innerHTML = `<div class="spot"></div><div class="tour-card" role="dialog" aria-modal="true" aria-labelledby="tour-t"><div class="tour-mini"></div><div><p class="tiny muted tour-n"></p><h3 id="tour-t"></h3><p class="tour-d"></p><div class="tour-acts"><button class="btn btn-quiet btn-sm" data-t="skip">Пропустить</button><button class="btn btn-ghost btn-sm" data-t="prev">Назад</button><button class="btn btn-primary btn-sm" data-t="next">Далее</button></div></div></div>`;
   document.body.append(ov);
+  // v13: в туре — тот же 3D-Аби, что и на сайте (без WebGL — рисунок)
+  if (!Abi.mountAbi3d(ov.querySelector('.tour-mini'), { distance: 2.6, target: [0, 0.05, 0], float: false })) ov.querySelector('.tour-mini').innerHTML = MASCOT_SVG;
   const spot = ov.querySelector('.spot'), card = ov.querySelector('.tour-card');
   const finish = () => {
     D.store.set(key, '1');
+    Abi.unmountAbi3d(ov.querySelector('.tour-mini'));
     ov.remove();
     removeEventListener('ab:present', finish);
     removeEventListener('resize', place);

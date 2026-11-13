@@ -1,7 +1,7 @@
 // АБИ v13: 3D-маскот и ассистент, который выполняет команды.
-// Пишешь или говоришь голосом — Аби ищет задания и награды, ставит цель, открывает разделы,
+// Выбираешь готовый вопрос или команду — Аби ищет задания и награды, ставит цель, открывает разделы,
 // готовит обмен (подтверждаешь ты) и черновик кампании (публикует студия). С ключом ИИ — ещё и ищет в интернете.
-// Переписка хранится в браузере (переживает перезагрузку), голос — Web Speech API, если браузер умеет.
+// Переписка хранится в браузере (переживает перезагрузку); ответы можно озвучивать.
 import { Stage, setAbiMood, ABI, reducedMotion } from './ab3d.js';
 
 let D = null;
@@ -10,7 +10,6 @@ export function setupAbi(deps) {
   D = deps;
 }
 const esc = (s) => D.esc(s);
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 const MAX_HIST = 40;
 
 // ------------------------------------------------------------------ 3D-Аби в любом блоке
@@ -78,7 +77,7 @@ let busyNow = false;
 export async function openAbi(prefill = '') {
   if (panel) {
     if (prefill) send(prefill);
-    return panel.querySelector('textarea')?.focus();
+    return panel.querySelector('.abi-sugg button')?.focus();
   }
   hooks.onOpen?.();
   panel = document.createElement('section');
@@ -94,19 +93,11 @@ export async function openAbi(prefill = '') {
       <button type="button" class="x abi-close" aria-label="Закрыть">✕</button>
     </header>
     <div class="msgs" aria-live="polite"></div>
-    <div class="quick abi-sugg" role="group" aria-label="Подсказки"></div>
-    <form class="abi-input">
-      <textarea rows="1" maxlength="800" placeholder="Напиши или скажи, что сделать…" aria-label="Сообщение для Аби"></textarea>
-      ${SR ? '<button type="button" class="abi-mic" aria-label="Сказать голосом" title="Сказать голосом">🎙</button>' : ''}
-      <button type="submit" class="abi-send" aria-label="Отправить">➤</button>
-    </form>`;
+    <div class="abi-sugg" role="group" aria-label="Выберите вопрос или команду"></div>`;
   document.body.append(panel);
   const head = panel.querySelector('.abi-head');
   if (!mountAbi3d(head, { distance: 2.55, target: [0, 0.12, 0], float: false })) head.innerHTML = hooks.svg || '';
   const msgs = panel.querySelector('.msgs');
-  const ta = panel.querySelector('textarea');
-  const form = panel.querySelector('form');
-
   panel.querySelector('.abi-close').onclick = closeAbi;
   panel.addEventListener('keydown', (e) => e.key === 'Escape' && closeAbi());
   panel.querySelector('.abi-clear').onclick = () => {
@@ -126,25 +117,6 @@ export async function openAbi(prefill = '') {
     if (!voiceOn()) speechSynthesis?.cancel();
     syncVoice();
   };
-  ta.addEventListener('input', () => {
-    ta.style.height = 'auto';
-    ta.style.height = `${Math.min(110, ta.scrollHeight)}px`;
-  });
-  ta.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      form.requestSubmit();
-    }
-  });
-  form.addEventListener('submit', (e) => {
-    e.preventDefault();
-    const text = ta.value.trim();
-    if (!text || busyNow) return;
-    ta.value = '';
-    ta.style.height = 'auto';
-    send(text);
-  });
-  bindMic(panel.querySelector('.abi-mic'), ta, form);
 
   // Прошлая переписка
   const hist = loadHist();
@@ -158,7 +130,7 @@ export async function openAbi(prefill = '') {
   panel.querySelector('.abi-status').title = info?.ai ? 'Отвечает ИИ (Claude) с инструментами приложения и поиском в интернете' : 'ИИ не подключён на сервере (нет ANTHROPIC_API_KEY): Аби выполняет команды и отвечает из базы знаний';
   renderSuggestions(info?.suggestions || []);
   if (prefill) send(prefill);
-  else ta.focus();
+  else panel.querySelector('.abi-sugg button')?.focus();
 }
 
 export function closeAbi() {
@@ -178,7 +150,7 @@ function greet() {
   renderMsg(
     {
       role: 'assistant',
-      text: `Сәлем${name ? `, ${name}` : ''}! Я Аби. Скажи, что сделать — найду задания, подберу награду, поставлю цель, открою нужный раздел${me?.role === 'company' ? ' или соберу черновик плейтеста' : ''}. Можно голосом 🎙`,
+      text: `Сәлем${name ? `, ${name}` : ''}! Я Аби. Выбери вопрос или команду внизу — найду задания, подберу награду, покажу цель и статистику${me?.role === 'company' ? ', соберу черновик плейтеста' : ''} или открою нужный раздел 👇`,
     },
     false
   );
@@ -188,16 +160,7 @@ function renderSuggestions(list) {
   const box = panel?.querySelector('.abi-sugg');
   if (!box) return;
   box.innerHTML = list.map((s, i) => `<button type="button" style="--i:${i}">${esc(s)}</button>`).join('');
-  box.querySelectorAll('button').forEach((b) =>
-    b.addEventListener('click', () => {
-      const t = b.textContent;
-      if (t.endsWith('…')) {
-        const ta = panel.querySelector('textarea');
-        ta.value = t.replace('…', '');
-        ta.focus();
-      } else send(t);
-    })
-  );
+  box.querySelectorAll('button').forEach((b) => b.addEventListener('click', () => send(b.textContent)));
 }
 
 function renderMsg(h, store = true) {
@@ -235,6 +198,7 @@ function renderMsg(h, store = true) {
 async function send(text) {
   if (!panel || busyNow) return;
   busyNow = true;
+  panel.querySelector('.abi-sugg')?.classList.add('busy');
   const hist = loadHist();
   renderMsg({ role: 'user', text });
   const msgs = panel.querySelector('.msgs');
@@ -256,7 +220,6 @@ async function send(text) {
     const autos = (r.actions || []).filter((a) => a.auto);
     renderMsg(h);
     speak(r.reply);
-    if (r.suggestions) renderSuggestions(r.suggestions);
     setTimeout(() => setAbiMood(r.actions?.some((a) => a.type === 'redeem') ? 'happy' : 'idle'), Math.min(2600, 400 + r.reply.length * 18));
     setTimeout(() => ABI.mood === 'happy' && setAbiMood('idle'), 4200);
     // «Приказы» выполняются сразу: открыть раздел, черновик кампании
@@ -267,6 +230,7 @@ async function send(text) {
     renderMsg({ role: 'assistant', text: `⚠️ ${err.message || 'Не получилось. Попробуй ещё раз.'}` }, false);
   } finally {
     busyNow = false;
+    panel?.querySelector('.abi-sugg')?.classList.remove('busy');
   }
 }
 
@@ -322,37 +286,4 @@ function speak(text) {
   u.onstart = () => setAbiMood('talk');
   u.onend = () => setAbiMood('idle');
   speechSynthesis.speak(u);
-}
-
-function bindMic(btn, ta, form) {
-  if (!btn || !SR) return;
-  let rec = null;
-  btn.onclick = () => {
-    if (rec) return rec.stop();
-    rec = new SR();
-    rec.lang = 'ru-RU';
-    rec.interimResults = true;
-    rec.maxAlternatives = 1;
-    btn.classList.add('on');
-    btn.setAttribute('aria-label', 'Остановить запись');
-    setAbiMood('think');
-    let finalText = '';
-    rec.onresult = (e) => {
-      let interim = '';
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        if (e.results[i].isFinal) finalText += e.results[i][0].transcript;
-        else interim += e.results[i][0].transcript;
-      }
-      ta.value = (finalText + interim).trim();
-    };
-    rec.onerror = (e) => e.error !== 'aborted' && D.toast(e.error === 'not-allowed' ? 'Разрешите доступ к микрофону' : 'Не расслышал, попробуй ещё раз', { kind: 'err' });
-    rec.onend = () => {
-      btn.classList.remove('on');
-      btn.setAttribute('aria-label', 'Сказать голосом');
-      rec = null;
-      setAbiMood('idle');
-      if (ta.value.trim()) form.requestSubmit();
-    };
-    rec.start();
-  };
 }
