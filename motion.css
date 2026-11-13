@@ -1,0 +1,111 @@
+/* ATTENTION BANK v11 — движение в стиле советского плаката.
+   Принципы: диагональ (конструктивизм), печать и штамп, табло с перекидными цифрами, лучи солнца.
+   Всё короткое (до 0,8 с), без мерцаний; при «уменьшении движения» отключается целиком. */
+
+/* ---------- Переход между разделами: диагональная полоса ---------- */
+.wipe { position: fixed; inset: 0; z-index: 70; pointer-events: none; overflow: hidden; }
+.wipe i { position: absolute; top: -25vh; bottom: -25vh; left: 0; width: 22vw; min-width: 150px; transform: translateX(-45vw) skewX(-18deg); will-change: transform; }
+.wipe .w-red { background: var(--red); box-shadow: 10px 0 0 #08080b; animation: wipeRun 0.8s both; }
+.wipe .w-gold { width: 2.6vw; min-width: 18px; background: var(--gold); animation: wipeRun 0.8s 0.06s both; }
+.wipe .w-star { position: absolute; top: 50%; left: 0; margin-top: -0.5em; font-size: clamp(40px, 5vw, 80px); line-height: 1; color: var(--gold); text-shadow: 4px 4px 0 #08080b; transform: translateX(-30vw); animation: starRun 0.8s both; }
+/* Полоса влетает, на миг замирает у центра и улетает — «вжух», как смена плаката */
+@keyframes wipeRun {
+  0% { transform: translateX(-45vw) skewX(-18deg); animation-timing-function: cubic-bezier(0.2, 0.75, 0.35, 1); }
+  45% { transform: translateX(36vw) skewX(-18deg); animation-timing-function: cubic-bezier(0.6, 0, 0.85, 0.45); }
+  100% { transform: translateX(140vw) skewX(-18deg); }
+}
+@keyframes starRun {
+  0% { transform: translateX(-20vw) rotate(0); animation-timing-function: cubic-bezier(0.2, 0.75, 0.35, 1); }
+  45% { transform: translateX(44vw) rotate(140deg); animation-timing-function: cubic-bezier(0.6, 0, 0.85, 0.45); }
+  100% { transform: translateX(150vw) rotate(300deg); }
+}
+
+/* ---------- Табло: перекидные цифры ---------- */
+.fl { display: inline-block; font-variant-numeric: tabular-nums; transform-origin: 50% 55%; }
+.fl.tick { animation: flTick 0.12s ease-out; }
+@keyframes flTick { from { transform: perspective(240px) rotateX(-75deg); opacity: 0.4; } }
+
+/* ---------- Заголовки печатаются слева направо, как плакат из-под валика ---------- */
+#app.page-in .page-head h1, #app.page-in .rep-head h1, #app.page-in .join h1, #app.page-in .legal h1, #app.page-in .auth h1 { animation: inkIn 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes inkIn {
+  0% { clip-path: inset(-15% 100% -25% 0); text-shadow: 0 0 0 var(--red); }
+  55% { clip-path: inset(-15% 0 -25% 0); text-shadow: 0 0 0 var(--red); }
+  100% { clip-path: inset(-15% -6% -25% -2%); }
+}
+#app.page-in .store-h1, .slide.in .deck-h1, .slide.in .deck-h2 { animation: wipeIn 0.85s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes wipeIn { from { clip-path: inset(-20% 100% -30% 0); } to { clip-path: inset(-20% -12% -30% -4%); } }
+#app.page-in .kicker, .slide.in .kicker { animation: kickIn 0.55s 0.08s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes kickIn { from { clip-path: inset(0 100% 0 0); transform: translateX(-12px); } to { clip-path: inset(-30% -20% -60% -10%); transform: none; } }
+
+/* ---------- Линейка над разделом рисуется при появлении, слева красный «маркер» ---------- */
+.section-head { position: relative; border-top-color: transparent !important; }
+.section-head::before { content: ''; position: absolute; left: 0; right: 0; top: -1px; height: 2px; background: linear-gradient(90deg, var(--gold), var(--line-strong) 40%); transform-origin: left; transition: transform 1s cubic-bezier(0.2, 0.8, 0.2, 1); }
+.section-head::after { content: ''; position: absolute; left: 0; top: -5px; width: 10px; height: 10px; background: var(--red); box-shadow: 2px 2px 0 #000; transition: transform 0.5s 0.2s cubic-bezier(0.2, 1.6, 0.4, 1); }
+.section-head.rv::before { transform: scaleX(0); }
+.section-head.rv::after { transform: scale(0) rotate(-90deg); }
+.section-head.rv.rv-in::before { transform: scaleX(1); }
+.section-head.rv.rv-in::after { transform: none; }
+
+/* ---------- Появление карточек: как плакат, который наклеивают на стену ---------- */
+.rv { transform: translateY(24px) rotate(-0.7deg) scale(0.985); transform-origin: 30% 100%; }
+
+/* ---------- Кнопки: блик по золотой эмали при наведении ---------- */
+.btn-primary, .btn-gold { position: relative; overflow: hidden; isolation: isolate; }
+.btn-primary::before, .btn-gold::before { content: ''; position: absolute; top: -20%; bottom: -20%; left: 0; width: 34%; z-index: -1; background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent); transform: translateX(-160%) skewX(-20deg); pointer-events: none; }
+.btn-primary:hover::before, .btn-gold:hover::before { transform: translateX(380%) skewX(-20deg); transition: transform 0.7s cubic-bezier(0.2, 0.8, 0.2, 1); }
+
+/* ---------- Уведомления выезжают телеграфной лентой ---------- */
+.toast { animation: tapeIn 0.55s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+@keyframes tapeIn { from { clip-path: inset(0 0 0 100%); transform: translateX(18px); } 60% { clip-path: inset(-30% -10% -30% 0); } to { clip-path: inset(-30% -10% -30% -10%); transform: none; } }
+.toast .stamp.press { animation: stampHit 0.5s 0.25s cubic-bezier(0.2, 1.6, 0.4, 1) both; }
+@keyframes stampHit { from { transform: scale(1.8) rotate(-14deg); opacity: 0; } to { transform: rotate(-3deg); opacity: 1; } }
+
+/* ---------- Диалоги раскрываются как сложенный лист ---------- */
+dialog.modal[open] { animation: unfold 0.42s cubic-bezier(0.2, 0.8, 0.2, 1) both; transform-origin: 50% 0; }
+@keyframes unfold { from { opacity: 0; transform: perspective(1000px) rotateX(-14deg) translateY(10px); } }
+
+/* ---------- Загрузка: «строительная» лента вместо серого мерцания ---------- */
+.skeleton i { background: repeating-linear-gradient(-45deg, rgba(243, 232, 210, 0.07) 0 12px, rgba(245, 194, 27, 0.13) 12px 24px); background-size: 33.94px 33.94px; animation: stripeRun 0.9s linear infinite; border-radius: 3px; }
+@keyframes stripeRun { to { background-position: 33.94px 0; } }
+
+/* ---------- Прогресс: бегущие диагональные полосы ---------- */
+.meter i { background-size: 22.63px 22.63px; animation: stripeRun22 1.6s linear infinite; }
+.meter.animate i { animation: fill 1.1s cubic-bezier(0.2, 0.8, 0.2, 1) both, stripeRun22 1.6s linear infinite; }
+@keyframes stripeRun22 { to { background-position: 22.63px 0; } }
+
+/* ---------- Лента демо: полосы бегут на постоянном контейнере, перерисовка их не сбрасывает ---------- */
+.demo-ribbon.v11 { animation: none; background: transparent; }
+#ribbon:has(.demo-ribbon.v11) { background: repeating-linear-gradient(-45deg, var(--red) 0 22px, #d1461f 22px 44px); background-size: 62.23px 62.23px; animation: ribbonRun2 3.5s linear infinite; }
+@keyframes ribbonRun2 { to { background-position: 62.23px 0; } }
+
+/* ---------- Нижнее меню: активная вкладка подпрыгивает ---------- */
+.tabbar a[aria-current='page'] svg { animation: tabPop 0.45s cubic-bezier(0.2, 1.6, 0.4, 1); }
+@keyframes tabPop { from { transform: translateY(5px) scale(0.8); } }
+
+/* ---------- Космос: вращаются лучи солнца, пролетает спутник ---------- */
+.cosmos .sunrays { transform-origin: 1330px 260px; animation: raySpin 140s linear infinite; }
+@keyframes raySpin { to { transform: rotate(360deg); } }
+body:not(:has(.deck)):not(:has(.store-hero)) .cosmos .sunrays { opacity: 0.35; }
+.cosmos .flyby { animation: flyby 46s linear infinite; }
+@keyframes flyby {
+  0% { transform: translate(-120px, 330px); opacity: 0; }
+  2% { opacity: 1; }
+  30% { transform: translate(1720px, 40px); opacity: 1; }
+  31%, 100% { transform: translate(1720px, 40px); opacity: 0; }
+}
+.cosmos .flyby .blink { animation: blink 1.1s steps(2, jump-none) infinite; }
+@keyframes blink { 50% { opacity: 0.15; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .wipe { display: none; }
+  .fl.tick, #app.page-in .page-head h1, #app.page-in .rep-head h1, #app.page-in .join h1, #app.page-in .legal h1, #app.page-in .auth h1,
+  #app.page-in .store-h1, .slide.in .deck-h1, .slide.in .deck-h2, #app.page-in .kicker, .slide.in .kicker, .toast, .toast .stamp.press,
+  dialog.modal[open], .skeleton i, .meter i, .meter.animate i, #ribbon:has(.demo-ribbon.v11), .tabbar a[aria-current='page'] svg,
+  .cosmos .sunrays, .cosmos .flyby, .cosmos .flyby .blink { animation: none !important; }
+  .section-head.rv::before, .section-head.rv::after { transform: none; }
+  .cosmos .flyby { opacity: 0; }
+  .btn-primary:hover::before, .btn-gold:hover::before { transition: none; transform: translateX(-160%) skewX(-20deg); }
+}
+/* Заголовок внутри панели — без линейки и маркера */
+.section-head.sh-plain { padding-top: 0; flex-wrap: wrap; }
+.section-head.sh-plain::before, .section-head.sh-plain::after { display: none; }

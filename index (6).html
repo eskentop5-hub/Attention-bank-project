@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Тамга — бета-версия</title>
+<meta name="theme-color" content="#120E0B">
+<link rel="stylesheet" href="/play/play.css">
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: radial-gradient(1200px 600px at 50% -10%, #3A1A12, #0B0807 60%); color: #F3E8D2; font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; min-height: 100vh; }
+  .wrap { max-width: 1040px; margin: 0 auto; padding: 18px 16px 40px; }
+  header { display: flex; align-items: center; gap: 14px; margin-bottom: 14px; }
+  .logo { width: 48px; height: 48px; border-radius: 6px; background: #E0502C; display: grid; place-items: center; font-weight: 900; font-size: 24px; color: #FFF3E2; box-shadow: 4px 4px 0 #000; }
+  h1 { margin: 0; font-size: 22px; letter-spacing: 0.02em; text-transform: uppercase; }
+  .sub { color: #A3967F; font-size: 14px; }
+  .beta { margin-left: auto; font-size: 12px; font-weight: 700; padding: 4px 10px; border-radius: 4px; background: rgba(245, 194, 27, 0.15); color: #FFD54A; border: 1px solid rgba(245, 194, 27, 0.45); }
+  .game { position: relative; border-radius: 8px; overflow: hidden; box-shadow: 8px 8px 0 #000; border: 2px solid #F5C21B; background: #000; touch-action: none; user-select: none; -webkit-user-select: none; }
+  canvas { display: block; width: 100%; aspect-ratio: 16 / 9; }
+  .pad { position: absolute; left: 0; right: 0; bottom: 10px; display: none; justify-content: space-between; padding: 0 12px; pointer-events: none; }
+  .pad button { pointer-events: auto; width: 64px; height: 64px; border-radius: 50%; border: 2px solid rgba(243, 232, 210, 0.5); background: rgba(18, 14, 11, 0.55); color: #F3E8D2; font-size: 24px; touch-action: none; }
+  .pad button.on { background: #E0502C; border-color: #E0502C; }
+  .pad .mid { display: flex; gap: 10px; }
+  @media (pointer: coarse) { .pad { display: flex; } }
+  .controls { display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0 0; color: #A3967F; font-size: 14px; }
+  .controls kbd { background: #1E1712; border: 1px solid #3B2E24; border-bottom-width: 3px; border-radius: 4px; padding: 1px 7px; color: #F3E8D2; font: 13px ui-monospace, monospace; }
+  .grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 16px; margin-top: 18px; }
+  .card { background: rgba(22, 18, 15, 0.85); border: 1px solid rgba(243, 232, 210, 0.12); border-radius: 6px; padding: 18px; }
+  .card h2 { margin: 0 0 10px; font-size: 17px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .stat { background: rgba(243, 232, 210, 0.05); border-radius: 4px; padding: 10px; }
+  .stat b { display: block; font-size: 22px; color: #F5C21B; }
+  .stat span { font-size: 12px; color: #A3967F; }
+  ol { margin: 0; padding-left: 20px; color: #D9CCB3; }
+  ol li { margin: 4px 0; }
+  textarea { background: #0E0A08; color: #F3E8D2; border: 1px solid #3B2E24; }
+  button { cursor: pointer; border: 0; border-radius: 4px; padding: 10px 16px; font: 700 15px system-ui, sans-serif; background: #F5C21B; color: #1A1206; }
+  .board { display: grid; gap: 10px; padding: 16px; margin: 0 auto; background: radial-gradient(circle at 50% 0, #2A1A12, #120E0B 70%); border-radius: 8px; border: 2px solid #F5C21B; box-shadow: 8px 8px 0 #000; }
+  .hudrow { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin-bottom: 12px; font-weight: 700; color: #D9CCB3; }
+  .hudrow b { color: #F5C21B; }
+  .hudrow button { margin-left: auto; }
+  .cell { aspect-ratio: 3 / 4; perspective: 700px; cursor: pointer; border: 0; padding: 0; background: none; }
+  .cell .in { position: relative; width: 100%; height: 100%; transition: transform 0.45s cubic-bezier(0.2, 0.9, 0.3, 1.1); transform-style: preserve-3d; }
+  .cell.open .in, .cell.done .in { transform: rotateY(180deg); }
+  .face { position: absolute; inset: 0; border-radius: 6px; backface-visibility: hidden; -webkit-backface-visibility: hidden; display: grid; place-items: center; }
+  .back { background: repeating-linear-gradient(45deg, #E0502C 0 10px, #C9431F 10px 20px); border: 3px solid #F5C21B; box-shadow: 3px 3px 0 #000; }
+  .back::after { content: '★'; color: #F5C21B; font-size: clamp(18px, 4vw, 34px); text-shadow: 2px 2px 0 #000; }
+  .front { background: #F3E8D2; border: 3px solid #120E0B; transform: rotateY(180deg); }
+  .front svg { width: 78%; height: 78%; }
+  .cell.done .front { background: #FFE9A6; animation: pop 0.5s ease; }
+  .cell.miss .front { background: #FFB8A6; }
+  @keyframes pop { 50% { transform: rotateY(180deg) scale(1.08); } }
+  .win { text-align: center; padding: 26px 10px; }
+  .win h2 { font-size: 26px; margin: 0 0 6px; color: #F5C21B; text-transform: uppercase; }
+</style>
+</head>
+<body>
+<div class="ab-strip"><b>Демо-продукт</b> Игра работает по-настоящему. Студия Qadam Apps — демонстрационная. <a href="/#/tasks">← Вернуться к заданию</a></div>
+<div class="wrap">
+  <header>
+    <div class="logo" aria-hidden="true" style="background:#3E9C9E">Т</div>
+    <div><h1>Тамга</h1><div class="sub">Qadam Apps · мемори с казахским орнаментом · сборка 0.7</div></div>
+    <span class="beta">BETA-ТЕСТ</span>
+  </header>
+  <div class="hudrow"><span>Уровень <b id="h-level">1</b>/3</span><span>Ходы <b id="h-moves">0</b></span><span>Ошибки <b id="h-miss">0</b></span><span>Время <b id="h-time">0:00</b></span><span>Серия <b id="h-combo">0</b></span><button type="button" class="ghost" id="restart">Заново</button></div>
+  <div class="board" id="board" role="grid" aria-label="Игровое поле: найдите пары одинаковых орнаментов"></div>
+  <div class="grid">
+    <section class="card">
+      <h2>Ваш тест</h2>
+      <div class="stats">
+        <div class="stat"><b id="s-level">1</b><span>уровень</span></div>
+        <div class="stat"><b id="s-pairs">0</b><span>пар найдено</span></div>
+        <div class="stat"><b id="s-miss">0</b><span>ошибки</span></div>
+        <div class="stat"><b id="s-time">0:00</b><span>в игре</span></div>
+      </div>
+      <p class="muted">Статистика считается только в этом браузере и никуда не отправляется. Скопируйте её в ответ, если хотите подкрепить отзыв.</p>
+      <div class="copy-box">
+        <textarea id="summary" readonly aria-label="Итоги теста"></textarea>
+        <button id="copy" class="ghost" type="button">Скопировать</button>
+      </div>
+    </section>
+    <section class="card">
+      <h2>Что проверить</h2>
+      <ol>
+        <li>Различимы ли орнаменты? Какие пары путаются?</li>
+        <li>Не слишком ли быстро закрываются карточки?</li>
+        <li>Как ощущается сложность 3-го уровня?</li>
+        <li>Захотелось бы сыграть ещё раз?</li>
+      </ol>
+      <p class="muted">Орнаменты нарисованы по мотивам казахских узоров: «қошқар мүйіз» (рога барана), солнце, звезда, волны.</p>
+    </section>
+  </div>
+</div>
+<script type="module" src="tamga.js"></script>
+</body>
+</html>

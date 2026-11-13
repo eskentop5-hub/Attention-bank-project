@@ -1,7 +1,7 @@
 // Service Worker: PWA-установка и офлайн-оболочка.
 // API никогда не кэшируется — баланс и задания всегда свежие с сервера.
-const CACHE = 'ab-shell-v10';
-const SHELL = ['/', '/index.html', '/css/app.css', '/css/retro.css', '/js/app.js', '/js/ab3d.js', '/js/extras.js', '/icons/logo.svg', '/icons/icon-192.png', '/manifest.webmanifest', '/img/rewards/cat-game_access.svg'];
+const CACHE = 'ab-shell-v13';
+const SHELL = ['/', '/index.html', '/css/app.css', '/css/retro.css', '/css/v11.css', '/css/motion.css', '/css/v13.css', '/js/app.js', '/js/ab3d.js', '/js/extras.js', '/js/v11.js', '/js/motion.js', '/js/abi.js', '/js/present.js', '/icons/logo.svg', '/icons/icon-192.png', '/manifest.webmanifest', '/img/rewards/cat-game_access.svg'];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
